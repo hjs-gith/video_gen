@@ -1,0 +1,11 @@
+episode_number: 11
+cluster: 3
+cluster_name: "What AI Remembers & Knows"
+terms:
+  - "Token"
+tier: "T1"
+one_line_gist: "The small chunks of language AI reads and writes — and what you're billed for."
+metaphor_seed: "AI taxi meter — every word in and every word out runs the meter"
+example_scenario: "Reading a headline like '1 million token context' and not knowing what a token actually is; seeing a 120-token prompt produce a 350-token reply and realizing you pay for both"
+target_length_sec: 58
+next_episode_teaser: "Context Window"
