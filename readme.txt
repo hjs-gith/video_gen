@@ -95,6 +95,23 @@ Replace 11 with your episode number.
   Stages 2 and 3 read whatever is in script.json at the time they run.
 
 
+  REFINING THE SCRIPT BY CHAT (optional, recommended)
+  ---------------------------------------------------
+  script.json is the creative heart of the episode — it's worth getting right
+  before you spend on images and video. You can refine it conversationally with
+  a coding agent instead of (or after) the stage-1 draft:
+
+    - Claude Code:  run the /episode-script skill, e.g. "/episode-script 11"
+                    or just ask it to tweak a scene for episode 11.
+    - Codex / other: point the agent at AGENTS.md; it routes to the same
+                    procedure.
+
+  The skill (.claude/skills/episode-script/SKILL.md) teaches the agent the
+  schema, the editorial rules (beats, pacing, bilingual voice, Atlas poses),
+  and how to validate. It edits script.json directly — no API cost — then you
+  run stage 2 when happy.
+
+
   STAGE 2 — Images
   ----------------
   Preview image prompts (no API call):
