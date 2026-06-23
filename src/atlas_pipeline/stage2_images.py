@@ -37,6 +37,15 @@ _CHARACTER_RULE_NONE = "No characters; show only the pixel-art props, icons, and
 
 _RENDERING_SPEC = "Quality: high. Format: 16:9 educational slide ready for video voiceover."
 
+# Appended to frame B's prompt. Frame B is generated as an edit of frame A so the
+# two alternate cleanly as a 2-frame animation loop in the video (stage 3).
+_VARIATION_SUFFIX = (
+    "ALTERNATE FRAME: Produce a near-identical alternate of the provided image for "
+    "a 2-frame animation loop. Keep the exact same composition, layout, colors, and "
+    "all text identical; change only a small natural detail (a slight pose, shadow, "
+    "or highlight shift)."
+)
+
 
 def _build_prompt(
     scene: dict,
@@ -144,21 +153,32 @@ def generate_images(
         if scene_filter and sid != scene_filter:
             continue
 
-        for candidate in ("a", "b"):
-            out_path = images_dir / f"{sid}_{candidate}.png"
-            if out_path.exists() and not force:
-                console.print(f"[dim]{sid}_{candidate}.png exists — skipping[/dim]")
-                continue
+        path_a = images_dir / f"{sid}_a.png"
+        path_b = images_dir / f"{sid}_b.png"
 
-            if dry_run:
-                console.print(f"[dim]DRY RUN: Would generate {sid}_{candidate}.png[/dim]")
-                continue
+        # Frame A — the base frame.
+        if path_a.exists() and not force:
+            console.print(f"[dim]{path_a.name} exists — skipping[/dim]")
+        elif dry_run:
+            console.print(f"[dim]DRY RUN: Would generate {path_a.name}[/dim]")
+        else:
+            console.print(f"Generating {path_a.name} ({size}, quality={quality}) ...")
+            _generate_frame_a(scene, path_a, episode_id, size, quality)
 
-            console.print(f"Generating {sid}_{candidate}.png ({size}, quality={quality}) ...")
-            _generate_one(scene, out_path, episode_id, size, quality)
+        # Frame B — a slight variation of A, for the 2-frame animation loop.
+        if path_b.exists() and not force:
+            console.print(f"[dim]{path_b.name} exists — skipping[/dim]")
+        elif dry_run:
+            console.print(f"[dim]DRY RUN: Would generate {path_b.name} (variation of A)[/dim]")
+        elif not path_a.exists():
+            console.print(f"[yellow]No {path_a.name} to vary — skipping {path_b.name}[/yellow]")
+        else:
+            console.print(f"Generating {path_b.name} (variation of A) ...")
+            _generate_frame_b(scene, path_b, path_a, episode_id, size, quality)
 
 
-def _generate_one(scene: dict, out_path: Path, episode_id: str, size: str, quality: str) -> None:
+def _generate_frame_a(scene: dict, out_path: Path, episode_id: str, size: str, quality: str) -> None:
+    """Generate the base frame: Atlas bible edit when in-scene, else plain generate."""
     prompt = scene["image_prompt"]
     sid = scene["scene_id"]
     atlas_in = scene.get("atlas_in_scene", False)
@@ -202,16 +222,38 @@ def _generate_one(scene: dict, out_path: Path, episode_id: str, size: str, quali
         cost_usd=0.12 if atlas_in else 0.10,
         episode_id=episode_id,
         scene_id=sid,
-        extra={"atlas_in_scene": atlas_in, "pose": pose},
+        extra={"atlas_in_scene": atlas_in, "pose": pose, "frame": "a"},
     )
     console.print(f"[green]✓[/green] {out_path.name}")
 
 
-def select_candidate(ep_dir: Path, scene_id: str, candidate: str) -> None:
-    src = ep_dir / "images" / f"{scene_id}_{candidate}.png"
-    dst = ep_dir / "images" / f"{scene_id}_selected.png"
-    if not src.exists():
-        raise FileNotFoundError(f"Candidate not found: {src}")
-    import shutil
-    shutil.copy2(src, dst)
-    console.print(f"[green]✓[/green] {scene_id}_selected.png → candidate {candidate}")
+def _generate_frame_b(
+    scene: dict, out_path: Path, frame_a_path: Path, episode_id: str, size: str, quality: str
+) -> None:
+    """Generate frame B as a near-identical variation of frame A (edit)."""
+    sid = scene["scene_id"]
+    prompt = scene["image_prompt"] + "\n\n" + _VARIATION_SUFFIX
+
+    with open(frame_a_path, "rb") as img:
+        result = image_client.images.edit(
+            model=IMAGE_MODEL,
+            image=img,
+            prompt=prompt,
+            size=size,
+            quality=quality,
+        )
+
+    image_bytes = base64.b64decode(result.data[0].b64_json)
+    out_path.write_bytes(image_bytes)
+
+    log_api_call(
+        stage="2_images",
+        model=IMAGE_MODEL,
+        tokens_in=0,
+        tokens_out=0,
+        cost_usd=0.12,
+        episode_id=episode_id,
+        scene_id=sid,
+        extra={"frame": "b", "variation_of": "a"},
+    )
+    console.print(f"[green]✓[/green] {out_path.name}")

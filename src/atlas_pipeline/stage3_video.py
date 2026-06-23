@@ -6,12 +6,37 @@ from pathlib import Path
 import numpy as np
 from rich.console import Console
 
-from .config import TTS_MODEL, TTS_SPEED, TTS_VOICE_EN, TTS_VOICE_KO, tts_client
+from .config import (
+    TTS_MODEL,
+    TTS_PROVIDER,
+    TTS_SPEED,
+    TTS_VOICE_EN,
+    TTS_VOICE_KO,
+    tts_client,
+)
 from .utils import log_api_call
 
 console = Console()
 
 _DURATION_TOLERANCE_SEC = 0.5
+
+
+def _frame_index(t: float, n: int, flip_interval: float) -> int:
+    """Which of `n` frames is shown at time `t` when flipping every `flip_interval`."""
+    return int(t / flip_interval) % n
+
+
+def _audio_path(audio_dir: Path, sid: str, lang: str) -> Path | None:
+    """Resolve an existing per-scene audio file regardless of provider extension.
+
+    OpenAI TTS writes .mp3; local Supertonic writes .wav. Returns the first that
+    exists, or None.
+    """
+    for ext in ("mp3", "wav"):
+        p = audio_dir / f"{sid}_{lang}.{ext}"
+        if p.exists():
+            return p
+    return None
 
 
 def generate_tts(
@@ -22,23 +47,27 @@ def generate_tts(
     speed: float | None = None,
     force: bool = False,
     dry_run: bool = False,
+    provider: str | None = None,
 ) -> None:
     audio_dir = ep_dir / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
 
+    provider = provider or TTS_PROVIDER
     speed = TTS_SPEED if speed is None else speed
-    voice = TTS_VOICE_EN if lang == "en" else TTS_VOICE_KO
     narration_key = "en" if lang == "en" else "ko"
     episode_id = script.get("meta", {}).get("term", "unknown")
+
+    ext = "wav" if provider == "supertonic" else "mp3"
 
     for scene in script.get("scenes", []):
         sid = scene["scene_id"]
         if scene_filter and sid != scene_filter:
             continue
 
-        out_path = audio_dir / f"{sid}_{lang}.mp3"
-        if out_path.exists() and not force:
-            console.print(f"[dim]{out_path.name} exists — skipping[/dim]")
+        out_path = audio_dir / f"{sid}_{lang}.{ext}"
+        existing = _audio_path(audio_dir, sid, lang)
+        if existing and not force:
+            console.print(f"[dim]{existing.name} exists — skipping[/dim]")
             continue
 
         narration = scene.get("narration", {}).get(narration_key, "")
@@ -47,36 +76,56 @@ def generate_tts(
             continue
 
         if dry_run:
-            console.print(f"[dim]DRY RUN: Would generate {out_path.name} (speed={speed})[/dim]")
+            console.print(f"[dim]DRY RUN: Would generate {out_path.name} ({provider})[/dim]")
             continue
 
-        console.print(f"TTS {sid} ({lang}, speed={speed}) ...")
-        response = tts_client.audio.speech.create(
-            model=TTS_MODEL,
-            voice=voice,
-            input=narration,
-            speed=speed,
-        )
-        out_path.write_bytes(response.content)
+        # Switching providers can leave a stale file at the other extension; drop it
+        # so assembly doesn't pick up the old voice.
+        if existing and existing != out_path:
+            existing.unlink()
 
-        # Duration check
+        if provider == "supertonic":
+            console.print(f"TTS {sid} ({lang}, supertonic) ...")
+            from .tts_local import synthesize_to_file
+
+            synthesize_to_file(narration, lang, out_path, speed)
+            log_api_call(
+                stage=f"3a_tts_local_{lang}",
+                model="supertonic-3",
+                tokens_in=len(narration.split()),
+                tokens_out=0,
+                cost_usd=0.0,
+                episode_id=episode_id,
+                scene_id=sid,
+                extra={"provider": "supertonic"},
+            )
+        else:
+            voice = TTS_VOICE_EN if lang == "en" else TTS_VOICE_KO
+            console.print(f"TTS {sid} ({lang}, openai, speed={speed}) ...")
+            response = tts_client.audio.speech.create(
+                model=TTS_MODEL,
+                voice=voice,
+                input=narration,
+                speed=speed,
+            )
+            out_path.write_bytes(response.content)
+            log_api_call(
+                stage=f"3a_tts_{lang}",
+                model=TTS_MODEL,
+                tokens_in=len(narration.split()),
+                tokens_out=0,
+                cost_usd=len(narration) * 0.000015,
+                episode_id=episode_id,
+                scene_id=sid,
+                extra={"speed": speed, "provider": "openai"},
+            )
+
         actual_dur = _audio_duration(out_path)
         target_dur = scene.get("duration_sec", 0)
         if abs(actual_dur - target_dur) > _DURATION_TOLERANCE_SEC:
             console.print(
                 f"  [yellow]Duration mismatch {sid}: audio={actual_dur:.1f}s, script={target_dur:.1f}s[/yellow]"
             )
-
-        log_api_call(
-            stage=f"3a_tts_{lang}",
-            model=TTS_MODEL,
-            tokens_in=len(narration.split()),
-            tokens_out=0,
-            cost_usd=len(narration) * 0.000015,
-            episode_id=episode_id,
-            scene_id=sid,
-            extra={"speed": speed},
-        )
         console.print(f"[green]✓[/green] {out_path.name} ({actual_dur:.1f}s)")
 
 
@@ -128,6 +177,7 @@ def assemble_video(
         CompositeVideoClip,
         ImageClip,
         TextClip,
+        VideoClip,
         concatenate_videoclips,
         vfx,
     )
@@ -136,21 +186,22 @@ def assemble_video(
     tail_gap = 0.8        # uniform pause held after each (trimmed) narration
     silence_thresh = 0.02  # ~-34 dBFS; quieter than this is treated as silence
     keep_tail = 0.10     # natural buffer kept after the last speech sample
+    flip_interval = 0.5  # seconds per frame when alternating A/B (~2 fps)
     scene_clips = []
     for scene in script.get("scenes", []):
         sid = scene["scene_id"]
 
-        # Pick image
-        img_selected = ep_dir / "images" / f"{sid}_selected.png"
-        img_fallback = ep_dir / "images" / f"{sid}_a.png"
-        img_path = img_selected if img_selected.exists() else img_fallback
-        if not img_path.exists():
+        # Pick images — frames A and B alternate as a 2-frame animation.
+        img_a = ep_dir / "images" / f"{sid}_a.png"
+        img_b = ep_dir / "images" / f"{sid}_b.png"
+        frame_paths = [p for p in (img_a, img_b) if p.exists()]
+        if not frame_paths:
             console.print(f"[yellow]No image for {sid} — skipping scene[/yellow]")
             continue
 
-        # Pick audio
-        audio_path = ep_dir / "audio" / f"{sid}_{lang}.mp3"
-        if not audio_path.exists():
+        # Pick audio (provider-agnostic: .mp3 or .wav)
+        audio_path = _audio_path(ep_dir / "audio", sid, lang)
+        if audio_path is None:
             console.print(f"[yellow]No audio for {sid} ({lang}) — skipping scene[/yellow]")
             continue
 
@@ -161,9 +212,21 @@ def assemble_video(
         duration = audio_clip.duration
         hold = duration + tail_gap  # linger on the still frame after narration ends
 
-        # Static image, held a beat past the narration (no motion)
-        img_clip = ImageClip(str(img_path)).with_duration(hold)
-        w, h = img_clip.size
+        # Visual: alternate A/B every flip_interval across `hold`. One frame -> static.
+        if len(frame_paths) == 1:
+            img_clip = ImageClip(str(frame_paths[0])).with_duration(hold)
+            w, h = img_clip.size
+        else:
+            # Pre-load the frames once and switch by time — far cheaper than
+            # building (and compositing) dozens of short ImageClips per scene.
+            frames = [ImageClip(str(p)).get_frame(0) for p in frame_paths]
+            n = len(frames)
+
+            def _make_frame(t, _frames=frames, _n=n, _fi=flip_interval):
+                return _frames[_frame_index(t, _n, _fi)]
+
+            img_clip = VideoClip(frame_function=_make_frame, duration=hold)
+            h, w = frames[0].shape[:2]
 
         layers = [img_clip]
 
