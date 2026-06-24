@@ -6,12 +6,15 @@ from pathlib import Path
 
 from rich.console import Console
 
+from . import image_local
 from .atlas_bible import get_bible_paths
 from .config import (
     ATLAS_BEATS,
     ATLAS_CHARACTER_BLURB,
     BEAT_TO_POSE,
+    IMAGE_LOCAL_MODEL,
     IMAGE_MODEL,
+    IMAGE_PROVIDER,
     IMAGE_QUALITY,
     IMAGE_SIZE,
     SERIES_STYLE_BLOCK,
@@ -139,10 +142,12 @@ def generate_images(
     scene_filter: str | None = None,
     force: bool = False,
     dry_run: bool = False,
+    provider: str | None = None,
 ) -> None:
     images_dir = ep_dir / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
 
+    provider = provider or IMAGE_PROVIDER
     meta = image_prompts.get("meta", {})
     episode_id = meta.get("term", "unknown")
     size = meta.get("image_size", IMAGE_SIZE)
@@ -160,10 +165,10 @@ def generate_images(
         if path_a.exists() and not force:
             console.print(f"[dim]{path_a.name} exists — skipping[/dim]")
         elif dry_run:
-            console.print(f"[dim]DRY RUN: Would generate {path_a.name}[/dim]")
+            console.print(f"[dim]DRY RUN: Would generate {path_a.name} ({provider})[/dim]")
         else:
-            console.print(f"Generating {path_a.name} ({size}, quality={quality}) ...")
-            _generate_frame_a(scene, path_a, episode_id, size, quality)
+            console.print(f"Generating {path_a.name} ({provider}, {size}, quality={quality}) ...")
+            _generate_frame_a(scene, path_a, episode_id, size, quality, provider)
 
         # Frame B — a slight variation of A, for the 2-frame animation loop.
         if path_b.exists() and not force:
@@ -174,86 +179,97 @@ def generate_images(
             console.print(f"[yellow]No {path_a.name} to vary — skipping {path_b.name}[/yellow]")
         else:
             console.print(f"Generating {path_b.name} (variation of A) ...")
-            _generate_frame_b(scene, path_b, path_a, episode_id, size, quality)
+            _generate_frame_b(scene, path_b, path_a, episode_id, size, quality, provider)
 
 
-def _generate_frame_a(scene: dict, out_path: Path, episode_id: str, size: str, quality: str) -> None:
-    """Generate the base frame: Atlas bible edit when in-scene, else plain generate."""
-    prompt = scene["image_prompt"]
-    sid = scene["scene_id"]
-    atlas_in = scene.get("atlas_in_scene", False)
-    pose = scene.get("pose_hint", "neutral")
+def _render(
+    provider: str,
+    prompt: str,
+    size: str,
+    quality: str,
+    out_path: Path,
+    reference_paths: list[Path],
+) -> None:
+    """Render one image via the chosen provider and write it to out_path.
 
-    if atlas_in:
-        bible_paths = get_bible_paths(pose)
-        if bible_paths:
-            images = [open(p, "rb") for p in bible_paths]
-            try:
-                result = image_client.images.edit(
-                    model=IMAGE_MODEL,
-                    image=images[0] if len(images) == 1 else images,
-                    prompt=prompt,
-                    size=size,
-                    quality=quality,
-                )
-            finally:
-                for f in images:
-                    f.close()
-        else:
-            console.print(f"[yellow]No bible images found for pose '{pose}' — falling back to generate[/yellow]")
-            atlas_in = False
+    `reference_paths` empty -> text-to-image; non-empty -> reference/img2img editing.
+    """
+    if provider == "local":
+        image_local.synthesize_image(prompt, size, out_path, reference_paths)
+        return
 
-    if not atlas_in:
+    # openai
+    if reference_paths:
+        images = [open(p, "rb") for p in reference_paths]
+        try:
+            result = image_client.images.edit(
+                model=IMAGE_MODEL,
+                image=images[0] if len(images) == 1 else images,
+                prompt=prompt,
+                size=size,
+                quality=quality,
+            )
+        finally:
+            for f in images:
+                f.close()
+    else:
         result = image_client.images.generate(
             model=IMAGE_MODEL,
             prompt=prompt,
             size=size,
             quality=quality,
         )
+    out_path.write_bytes(base64.b64decode(result.data[0].b64_json))
 
-    image_bytes = base64.b64decode(result.data[0].b64_json)
-    out_path.write_bytes(image_bytes)
+
+def _generate_frame_a(
+    scene: dict, out_path: Path, episode_id: str, size: str, quality: str, provider: str
+) -> None:
+    """Generate the base frame: condition on Atlas bible when in-scene, else text-to-image."""
+    prompt = scene["image_prompt"]
+    sid = scene["scene_id"]
+    atlas_in = scene.get("atlas_in_scene", False)
+    pose = scene.get("pose_hint", "neutral")
+
+    reference_paths: list[Path] = []
+    if atlas_in:
+        reference_paths = get_bible_paths(pose)
+        if not reference_paths:
+            console.print(f"[yellow]No bible images found for pose '{pose}' — falling back to text-to-image[/yellow]")
+            atlas_in = False
+
+    _render(provider, prompt, size, quality, out_path, reference_paths)
 
     log_api_call(
         stage="2_images",
-        model=IMAGE_MODEL,
+        model=IMAGE_LOCAL_MODEL if provider == "local" else IMAGE_MODEL,
         tokens_in=0,
         tokens_out=0,
-        cost_usd=0.12 if atlas_in else 0.10,
+        cost_usd=0.0 if provider == "local" else (0.12 if atlas_in else 0.10),
         episode_id=episode_id,
         scene_id=sid,
-        extra={"atlas_in_scene": atlas_in, "pose": pose, "frame": "a"},
+        extra={"atlas_in_scene": atlas_in, "pose": pose, "frame": "a", "provider": provider},
     )
     console.print(f"[green]✓[/green] {out_path.name}")
 
 
 def _generate_frame_b(
-    scene: dict, out_path: Path, frame_a_path: Path, episode_id: str, size: str, quality: str
+    scene: dict, out_path: Path, frame_a_path: Path, episode_id: str, size: str, quality: str, provider: str
 ) -> None:
-    """Generate frame B as a near-identical variation of frame A (edit)."""
+    """Generate frame B as a near-identical variation of frame A (edit/img2img)."""
     sid = scene["scene_id"]
     prompt = scene["image_prompt"] + "\n\n" + _VARIATION_SUFFIX
 
-    with open(frame_a_path, "rb") as img:
-        result = image_client.images.edit(
-            model=IMAGE_MODEL,
-            image=img,
-            prompt=prompt,
-            size=size,
-            quality=quality,
-        )
-
-    image_bytes = base64.b64decode(result.data[0].b64_json)
-    out_path.write_bytes(image_bytes)
+    _render(provider, prompt, size, quality, out_path, [frame_a_path])
 
     log_api_call(
         stage="2_images",
-        model=IMAGE_MODEL,
+        model=IMAGE_LOCAL_MODEL if provider == "local" else IMAGE_MODEL,
         tokens_in=0,
         tokens_out=0,
-        cost_usd=0.12,
+        cost_usd=0.0 if provider == "local" else 0.12,
         episode_id=episode_id,
         scene_id=sid,
-        extra={"frame": "b", "variation_of": "a"},
+        extra={"frame": "b", "variation_of": "a", "provider": provider},
     )
     console.print(f"[green]✓[/green] {out_path.name}")

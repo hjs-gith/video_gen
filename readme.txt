@@ -145,6 +145,16 @@ Replace 11 with your episode number.
 
   (regen is shorthand for: episode run 11 --stages 2 --scene S03 --force)
 
+  Image provider:
+    --image-provider openai   gpt-image-2 — the default
+    --image-provider local    your own local model behind an HTTP server (free)
+  The default can also be set via IMAGE_PROVIDER in .env. The 'local' provider
+  POSTs each prompt (plus any Atlas/frame reference images) to IMAGE_LOCAL_URL
+  and writes back the PNG, so you can run e.g. a FLUX.2 [klein] backend with no
+  API cost. Contract, model notes, and a reference server: see
+  docs/local_image_server.md. (Stages downstream don't care which provider made
+  the frames.)
+
 
   STAGE 3 — Audio + Video
   -----------------------

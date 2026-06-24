@@ -17,6 +17,13 @@ SCRIPT_MODEL = os.getenv("SCRIPT_MODEL", "gpt-5.4")
 IMAGE_MODEL = "gpt-image-2"
 IMAGE_SIZE = "1536x864"
 IMAGE_QUALITY = "high"
+
+# Stage 2 image provider: "openai" (gpt-image-2) or "local" (your own HTTP server,
+# e.g. a FLUX.2 [klein] backend — see docs/local_image_server.md).
+IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "openai")
+IMAGE_LOCAL_URL = os.getenv("IMAGE_LOCAL_URL", "http://127.0.0.1:8000/generate")
+IMAGE_LOCAL_MODEL = os.getenv("IMAGE_LOCAL_MODEL", "flux2-klein")
+IMAGE_LOCAL_STEPS = int(os.getenv("IMAGE_LOCAL_STEPS", "28"))
 TTS_MODEL = "gpt-4o-mini-tts"
 TTS_VOICE_EN = "nova"
 TTS_VOICE_KO = "nova"
