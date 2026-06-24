@@ -176,7 +176,7 @@ def assemble_video(
                 txt_clip = TextClip(
                     text=caption,
                     font=_get_font(overlay),
-                    font_size=38,
+                    font_size=25,
                     color="white",
                     stroke_color="black",
                     stroke_width=1,
