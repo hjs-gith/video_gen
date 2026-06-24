@@ -150,11 +150,40 @@ Replace 11 with your episode number.
     --image-provider local    your own local model behind an HTTP server (free)
   The default can also be set via IMAGE_PROVIDER in .env. The 'local' provider
   POSTs each prompt (plus any Atlas/frame reference images) to IMAGE_LOCAL_URL
-  and writes back the PNG, so you can run e.g. a FLUX.2 [klein] backend with no
-  API cost. Contract, model notes, and a reference server: see
-  docs/local_image_server.md (and docs/comfyui_local_image_server.md if you're
-  driving FLUX via ComfyUI). Stages downstream don't care which provider made
-  the frames.
+  and writes back the PNG, so you can run your own FLUX.2 backend with no API
+  cost; stages downstream don't care which provider made the frames. See the
+  next section to stand one up.
+
+
+  RUNNING YOUR OWN IMAGE BACKEND (FLUX.2, optional — wire up any time)
+  -------------------------------------------------------------------
+  The 'local' provider lets you swap gpt-image-2 for your own FLUX.2 generator
+  running OUTSIDE this repo, at no API cost. Nothing in the pipeline changes —
+  stage 2 just POSTs each prompt (plus any Atlas/frame reference images) to one
+  HTTP endpoint and expects a PNG back. You can set this up later:
+
+    1. Build/host a FLUX.2 [klein] generator outside this project. Two routes:
+         - ComfyUI: load a FLUX.2 klein workflow, then run the small shim in
+           docs/comfyui_local_image_server.md, which translates the pipeline's
+           request into ComfyUI's /prompt + /upload/image + /view API.
+         - Plain HTTP server: any server that loads FLUX.2 and implements the
+           one-call contract in docs/local_image_server.md.
+       FLUX.2 [klein] 4B is recommended: Apache-2.0, ~8GB VRAM, and one model
+       covers text-to-image AND the Atlas/reference modes (unlike FLUX.1 dev,
+       which is text-to-image only and needs FLUX.1 Kontext for references).
+
+    2. Point the pipeline at it (in .env or your shell):
+         IMAGE_PROVIDER=local
+         IMAGE_LOCAL_URL=http://127.0.0.1:8000/generate
+
+    3. Run stage 2 against your backend:
+         uv run atlas episode run 11 --stages 2 --image-provider local
+
+  The endpoint receives {prompt, width, height, reference_images[], steps} and
+  returns a PNG. reference_images carries the locked Atlas Bible PNGs (mascot
+  scenes) or frame A (when making frame B), base64-encoded; an empty list means
+  plain text-to-image. Full contract, a GPU-free test stub, and the ComfyUI
+  shim live in docs/local_image_server.md and docs/comfyui_local_image_server.md.
 
 
   STAGE 3 — Audio + Video
