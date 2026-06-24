@@ -59,6 +59,12 @@ use) and fits ~8 GB VRAM; the 9B is non-commercial. See
 (~24 GB) for the reference/img2img modes — two models to serve. Prefer klein unless
 you specifically need FLUX.1.
 
+**Using ComfyUI?** ComfyUI's API is a workflow-graph protocol, not this simple
+contract. Run the small shim in [comfyui_local_image_server.md](comfyui_local_image_server.md),
+which implements this contract and translates each call into ComfyUI's
+`/prompt` + `/upload/image` + `/view` API — so the pipeline stays unchanged and
+swapping FLUX.1 ↔ FLUX.2 is just a different workflow template.
+
 ## Reference server stub (FastAPI + diffusers)
 
 This is a starting point, not part of this package. Adapt the pipeline call to the

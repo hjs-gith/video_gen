@@ -152,8 +152,9 @@ Replace 11 with your episode number.
   POSTs each prompt (plus any Atlas/frame reference images) to IMAGE_LOCAL_URL
   and writes back the PNG, so you can run e.g. a FLUX.2 [klein] backend with no
   API cost. Contract, model notes, and a reference server: see
-  docs/local_image_server.md. (Stages downstream don't care which provider made
-  the frames.)
+  docs/local_image_server.md (and docs/comfyui_local_image_server.md if you're
+  driving FLUX via ComfyUI). Stages downstream don't care which provider made
+  the frames.
 
 
   STAGE 3 — Audio + Video
