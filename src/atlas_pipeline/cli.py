@@ -11,6 +11,11 @@ from rich.table import Table
 console = Console()
 
 
+def _has_audio(ep_dir: Path, sid: str, lang: str) -> bool:
+    """Per-scene audio exists in either provider format (.mp3 OpenAI / .wav local)."""
+    return any((ep_dir / "audio" / f"{sid}_{lang}.{ext}").exists() for ext in ("mp3", "wav"))
+
+
 @click.group()
 def main():
     """AI Jargon Atlas — bilingual short-form video course pipeline."""
@@ -54,12 +59,14 @@ def episode():
 @click.option("--scene", default=None, help="Only process this scene ID (e.g. S03).")
 @click.option("--quality", default=None, type=click.Choice(["low", "medium", "high", "auto"]), help="Stage 2 image quality (default: config IMAGE_QUALITY). Lower = faster/cheaper.")
 @click.option("--size", default=None, help="Stage 2 image size WxH, e.g. 1024x1024 (default: config IMAGE_SIZE).")
-@click.option("--speed", default=None, type=float, help="Stage 3 TTS speech speed 0.25–4.0 (default: config TTS_SPEED=1.0).")
+@click.option("--image-provider", default=None, type=click.Choice(["openai", "local"]), help="Stage 2 image provider (default: config IMAGE_PROVIDER=openai). 'local' needs your HTTP server running — see IMAGE_LOCAL_URL and docs/local_image_server.md.")
+@click.option("--speed", default=None, type=float, help="Stage 3 TTS speech speed 0.25–4.0 (default: config TTS_SPEED).")
+@click.option("--tts", "tts_provider", default=None, type=click.Choice(["supertonic", "openai"]), help="Stage 3 TTS provider (default: config TTS_PROVIDER=supertonic, local & free).")
 @click.option("--force", is_flag=True, help="Overwrite existing outputs.")
 @click.option("--dry-run", is_flag=True, help="Print what would happen, make no API calls.")
 @click.option("--no-atlas", is_flag=True, help="Skip Atlas character Bible references.")
 @click.option("--no-tts", is_flag=True, help="Stage 3: skip TTS and assemble from existing audio (no API cost).")
-def episode_run(episode_number, stages, lang, overlay, scene, quality, size, speed, force, dry_run, no_atlas, no_tts):
+def episode_run(episode_number, stages, lang, overlay, scene, quality, size, image_provider, speed, tts_provider, force, dry_run, no_atlas, no_tts):
     """Run pipeline stages for EPISODE_NUMBER."""
     from .curriculum import get_episode
     from .stage1_script import build_script
@@ -91,7 +98,7 @@ def episode_run(episode_number, stages, lang, overlay, scene, quality, size, spe
             image_prompts = build_image_prompts(script, overlay_lang=lang, size=size, quality=quality, dry_run=dry_run)
             if not dry_run:
                 save_json(image_prompts, image_prompts_path)
-            generate_images(image_prompts, ep_dir, scene_filter=scene, force=force, dry_run=dry_run)
+            generate_images(image_prompts, ep_dir, scene_filter=scene, force=force, dry_run=dry_run, provider=image_provider)
 
     if "3" in stage_list:
         console.rule("[bold]Stage 3: Audio + Video[/bold]")
@@ -101,7 +108,7 @@ def episode_run(episode_number, stages, lang, overlay, scene, quality, size, spe
                 return
             script = load_json(script_path)
         if not no_tts:
-            generate_tts(script, ep_dir, lang=lang, scene_filter=scene, speed=speed, force=force, dry_run=dry_run)
+            generate_tts(script, ep_dir, lang=lang, scene_filter=scene, speed=speed, force=force, dry_run=dry_run, provider=tts_provider)
         assemble_video(script, ep_dir, lang=lang, overlay=overlay, force=force, dry_run=dry_run)
 
 
@@ -134,12 +141,10 @@ def episode_status(episode_number):
             sid = s["scene_id"]
             has_a = (ep_dir / "images" / f"{sid}_a.png").exists()
             has_b = (ep_dir / "images" / f"{sid}_b.png").exists()
-            has_sel = (ep_dir / "images" / f"{sid}_selected.png").exists()
-            has_en = (ep_dir / "audio" / f"{sid}_en.mp3").exists()
-            has_ko = (ep_dir / "audio" / f"{sid}_ko.mp3").exists()
+            has_en = _has_audio(ep_dir, sid, "en")
+            has_ko = _has_audio(ep_dir, sid, "ko")
             img_status = (
-                "[green]selected[/green]" if has_sel
-                else "[yellow]a+b[/yellow]" if has_a and has_b
+                "[green]A+B[/green]" if has_a and has_b
                 else "[yellow]partial[/yellow]" if has_a or has_b
                 else "[red]missing[/red]"
             )
@@ -153,19 +158,29 @@ def episode_status(episode_number):
     console.print(table)
 
 
-@episode.command("select")
+@episode.command("regen")
 @click.argument("episode_number", type=int)
 @click.argument("scene_id")
-@click.argument("candidate", type=click.Choice(["a", "b"]))
-def episode_select(episode_number, scene_id, candidate):
-    """Select a candidate image for a scene (e.g. atlas episode select 11 S03 b)."""
+@click.option("--quality", default=None, type=click.Choice(["low", "medium", "high", "auto"]), help="Image quality (default: config IMAGE_QUALITY).")
+@click.option("--size", default=None, help="Image size WxH (default: config IMAGE_SIZE).")
+@click.option("--image-provider", default=None, type=click.Choice(["openai", "local"]), help="Image provider (default: config IMAGE_PROVIDER). 'local' needs your HTTP server running.")
+def episode_regen(episode_number, scene_id, quality, size, image_provider):
+    """Re-generate both image frames for one (awkward) scene (e.g. atlas episode regen 11 S03)."""
     from .curriculum import get_episode
-    from .stage2_images import select_candidate
-    from .utils import episode_dir
+    from .stage2_images import build_image_prompts, generate_images
+    from .utils import episode_dir, load_json, save_json
 
     ep = get_episode(episode_number)
     ep_dir = episode_dir(ep.cluster, ep.episode_number, ep.terms[0])
-    select_candidate(ep_dir, scene_id, candidate)
+    script_path = ep_dir / "script.json"
+    if not script_path.exists():
+        console.print("[red]script.json not found. Run stage 1 first.[/red]")
+        return
+
+    script = load_json(script_path)
+    image_prompts = build_image_prompts(script, overlay_lang="en", size=size, quality=quality)
+    save_json(image_prompts, ep_dir / "image_prompts.json")
+    generate_images(image_prompts, ep_dir, scene_filter=scene_id, force=True, provider=image_provider)
 
 
 @episode.command("list")
@@ -191,7 +206,13 @@ def episode_list(cluster):
     for ep in episodes:
         ep_dir = episode_dir(ep.cluster, ep.episode_number, ep.terms[0])
         has_script = (ep_dir / "script.json").exists()
-        img_count = len(list((ep_dir / "images").glob("*_selected.png"))) if (ep_dir / "images").exists() else 0
+        images_dir = ep_dir / "images"
+        if images_dir.exists():
+            a_frames = {p.name[:-6] for p in images_dir.glob("*_a.png")}
+            b_frames = {p.name[:-6] for p in images_dir.glob("*_b.png")}
+            img_count = len(a_frames & b_frames)
+        else:
+            img_count = 0
         mp4s = len(list(ep_dir.glob("*.mp4")))
         table.add_row(
             str(ep.episode_number),

@@ -17,10 +17,28 @@ SCRIPT_MODEL = os.getenv("SCRIPT_MODEL", "gpt-5.4")
 IMAGE_MODEL = "gpt-image-2"
 IMAGE_SIZE = "1536x864"
 IMAGE_QUALITY = "high"
+
+# Stage 2 image provider: "openai" (gpt-image-2) or "local" (your own HTTP server,
+# e.g. a FLUX.2 [klein] backend — see docs/local_image_server.md).
+IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "openai")
+IMAGE_LOCAL_URL = os.getenv("IMAGE_LOCAL_URL", "http://127.0.0.1:8000/generate")
+IMAGE_LOCAL_MODEL = os.getenv("IMAGE_LOCAL_MODEL", "flux2-klein")
+IMAGE_LOCAL_STEPS = int(os.getenv("IMAGE_LOCAL_STEPS", "28"))
 TTS_MODEL = "gpt-4o-mini-tts"
 TTS_VOICE_EN = "nova"
 TTS_VOICE_KO = "nova"
 TTS_SPEED = float(os.getenv("TTS_SPEED", "1.1"))  # 0.25–4.0; 1.0 = normal
+
+# Stage 3 TTS provider: "supertonic" (local, free, on-device) or "openai".
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "supertonic")
+
+# Local Supertonic 3 TTS. Models download to / load from this repo-local folder
+# (env-overridable) instead of the user's global Hugging Face cache.
+SUPERTONIC_MODEL_DIR = Path(
+    os.getenv("SUPERTONIC_MODEL_DIR", str(ROOT / "models" / "supertonic"))
+)
+SUPERTONIC_VOICE_EN = os.getenv("SUPERTONIC_VOICE_EN", "F1")
+SUPERTONIC_VOICE_KO = os.getenv("SUPERTONIC_VOICE_KO", "F1")
 
 TIER_HEX: dict[str, str] = {
     "T1": "#D94F3A",
@@ -83,6 +101,23 @@ def _client(env_var: str) -> OpenAI:
     return OpenAI(api_key=key)
 
 
-script_client = _client("SCRIPT_API")
-image_client = _client("IMAGE_API")
-tts_client = _client("TTS_API")
+class _LazyClient:
+    """Defers OpenAI client construction until first use.
+
+    This lets stages that don't need a given key run without it — e.g. using the
+    local Supertonic TTS provider requires no TTS_API key at all.
+    """
+
+    def __init__(self, env_var: str):
+        self._env_var = env_var
+        self._client: OpenAI | None = None
+
+    def __getattr__(self, name):
+        if self._client is None:
+            self._client = _client(self._env_var)
+        return getattr(self._client, name)
+
+
+script_client = _LazyClient("SCRIPT_API")
+image_client = _LazyClient("IMAGE_API")
+tts_client = _LazyClient("TTS_API")

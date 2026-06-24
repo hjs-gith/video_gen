@@ -11,3 +11,7 @@ wheels/
 
 # secrets
 .env
+
+# local TTS model assets (Supertonic / Hugging Face downloads)
+models/
+assets/

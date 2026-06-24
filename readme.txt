@@ -15,8 +15,16 @@ FIRST-TIME SETUP
      IMAGE_API  = 'sk-...'   (for image generation via gpt-image-2)
      TTS_API    = 'sk-...'   (for voice generation via gpt-4o-mini-tts)
 
+   Note: stages 1 and 2 (script + images) use the OpenAI APIs above. Stage 3
+   voiceover defaults to a LOCAL, free TTS engine (Supertonic) and needs no key;
+   the TTS_API key is only used if you opt into OpenAI TTS with --tts openai.
+
 2. Install dependencies:
      uv sync
+
+   This also pulls Supertonic (local TTS). On the first stage-3 run, its model
+   files (~once) download into models/supertonic/ in this repo — not your global
+   cache. Set SUPERTONIC_MODEL_DIR in .env to relocate them.
 
 3. Generate the Atlas character Bible (one-time, ~$3):
      uv run atlas bible generate
@@ -87,15 +95,38 @@ Replace 11 with your episode number.
   Stages 2 and 3 read whatever is in script.json at the time they run.
 
 
+  REFINING THE SCRIPT BY CHAT (optional, recommended)
+  ---------------------------------------------------
+  script.json is the creative heart of the episode — it's worth getting right
+  before you spend on images and video. You can refine it conversationally with
+  a coding agent instead of (or after) the stage-1 draft:
+
+    - Claude Code:  run the /episode-script skill, e.g. "/episode-script 11"
+                    or just ask it to tweak a scene for episode 11.
+    - Codex / other: point the agent at AGENTS.md; it routes to the same
+                    procedure.
+
+  The skill (.claude/skills/episode-script/SKILL.md) teaches the agent the
+  schema, the editorial rules (beats, pacing, bilingual voice, Atlas poses),
+  and how to validate. It edits script.json directly — no API cost — then you
+  run stage 2 when happy.
+
+
   STAGE 2 — Images
   ----------------
   Preview image prompts (no API call):
     uv run atlas episode run 11 --stages 2 --dry-run
 
-  Generate images (2 candidates per scene, ~$1.50 per episode):
+  Generate images (2 frames per scene, ~$1.50 per episode):
     uv run atlas episode run 11 --stages 2
 
   Output: episodes/c03_e11_token/images/S01_a.png, S01_b.png, ...
+
+  Each scene gets TWO frames: S01_a.png and S01_b.png. Frame B is generated as
+  a near-identical VARIATION of frame A (same composition, one small detail
+  shifted). BOTH frames are used — stage 3 alternates between them (~2 fps) so
+  each slide carries a subtle 2-frame animation. They are NOT competing
+  candidates to pick between.
 
   Every image is a cozy 16-bit pixel-art slide. Scenes the script marked
   atlas_in_scene=true include the Atlas mascot (rendered from the locked
@@ -109,13 +140,50 @@ Replace 11 with your episode number.
   Example — quick, cheap drafts while tuning prompts:
     uv run atlas episode run 11 --stages 2 --quality low
 
-  Review the candidates, then select the better one per scene:
-    uv run atlas episode select 11 S01 a
-    uv run atlas episode select 11 S02 b
-    ... (repeat for each scene)
+  Review the frames. If a scene came out awkward, re-roll BOTH of its frames:
+    uv run atlas episode regen 11 S03
 
-  To regenerate just one scene's images:
-    uv run atlas episode run 11 --stages 2 --scene S03 --force
+  (regen is shorthand for: episode run 11 --stages 2 --scene S03 --force)
+
+  Image provider:
+    --image-provider openai   gpt-image-2 — the default
+    --image-provider local    your own local model behind an HTTP server (free)
+  The default can also be set via IMAGE_PROVIDER in .env. The 'local' provider
+  POSTs each prompt (plus any Atlas/frame reference images) to IMAGE_LOCAL_URL
+  and writes back the PNG, so you can run your own FLUX.2 backend with no API
+  cost; stages downstream don't care which provider made the frames. See the
+  next section to stand one up.
+
+
+  RUNNING YOUR OWN IMAGE BACKEND (FLUX.2, optional — wire up any time)
+  -------------------------------------------------------------------
+  The 'local' provider lets you swap gpt-image-2 for your own FLUX.2 generator
+  running OUTSIDE this repo, at no API cost. Nothing in the pipeline changes —
+  stage 2 just POSTs each prompt (plus any Atlas/frame reference images) to one
+  HTTP endpoint and expects a PNG back. You can set this up later:
+
+    1. Build/host a FLUX.2 [klein] generator outside this project. Two routes:
+         - ComfyUI: load a FLUX.2 klein workflow, then run the small shim in
+           docs/comfyui_local_image_server.md, which translates the pipeline's
+           request into ComfyUI's /prompt + /upload/image + /view API.
+         - Plain HTTP server: any server that loads FLUX.2 and implements the
+           one-call contract in docs/local_image_server.md.
+       FLUX.2 [klein] 4B is recommended: Apache-2.0, ~8GB VRAM, and one model
+       covers text-to-image AND the Atlas/reference modes (unlike FLUX.1 dev,
+       which is text-to-image only and needs FLUX.1 Kontext for references).
+
+    2. Point the pipeline at it (in .env or your shell):
+         IMAGE_PROVIDER=local
+         IMAGE_LOCAL_URL=http://127.0.0.1:8000/generate
+
+    3. Run stage 2 against your backend:
+         uv run atlas episode run 11 --stages 2 --image-provider local
+
+  The endpoint receives {prompt, width, height, reference_images[], steps} and
+  returns a PNG. reference_images carries the locked Atlas Bible PNGs (mascot
+  scenes) or frame A (when making frame B), base64-encoded; an empty list means
+  plain text-to-image. Full contract, a GPU-free test stub, and the ComfyUI
+  shim live in docs/local_image_server.md and docs/comfyui_local_image_server.md.
 
 
   STAGE 3 — Audio + Video
@@ -123,7 +191,14 @@ Replace 11 with your episode number.
   Generate TTS audio and assemble the video:
     uv run atlas episode run 11 --stages 3 --lang en --overlay ko
 
-  This produces one MP4 with English voice and Korean captions.
+  This produces one MP4 with English voice and Korean captions. Each slide
+  gently alternates between its two frames (~2 fps) for a subtle animation.
+
+  TTS provider:
+    --tts supertonic   local, on-device, FREE — the default (no API cost)
+    --tts openai       OpenAI gpt-4o-mini-tts (may sound more natural; costs $)
+  The default provider can also be set via TTS_PROVIDER in .env.
+  Supertonic writes .wav per scene; OpenAI writes .mp3. Assembly accepts either.
 
   Language options:
     --lang en|ko          which language to use for voiceover
@@ -134,7 +209,7 @@ Replace 11 with your episode number.
   the bottom. (The short on-screen headline is baked into the slide image
   during stage 2 and is independent of the caption language.)
 
-  Speech speed:
+  Speech speed (works for both providers):
     --speed 0.25–4.0   how fast the voice talks (default: 1.1)
   Example:
     uv run atlas episode run 11 --stages 3 --lang en --speed 1.2 --force
@@ -252,17 +327,17 @@ FILE STRUCTURE
   .env                            API keys
   episodes_yaml/episode_NN.yaml  Episode input data (one file per episode)
   atlas/bible/                   Atlas character reference images (locked)
+  models/supertonic/             Local TTS model files (downloaded once; gitignored)
   episodes/
     c03_e11_token/
       script.json                Stage 1 output
       image_prompts.json         Stage 2 intermediate
       images/
-        S01_a.png                Candidate A
-        S01_b.png                Candidate B
-        S01_selected.png         Chosen candidate (set by `atlas episode select`)
+        S01_a.png                Frame A (both frames are used in the video)
+        S01_b.png                Frame B (variation of A; alternates with A)
       audio/
-        S01_en.mp3               English TTS per scene
-        S01_ko.mp3               Korean TTS per scene
+        S01_en.wav               English TTS per scene (.wav local / .mp3 OpenAI)
+        S01_ko.wav               Korean TTS per scene
       c03_e11_token_en_overlay-ko.mp4   Final video
   logs/api_calls.jsonl           Append-only cost log
   plan_files/                    Original planning documents (reference only)
