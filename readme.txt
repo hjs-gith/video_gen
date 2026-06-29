@@ -117,22 +117,26 @@ Replace 11 with your episode number.
   Preview image prompts (no API call):
     uv run atlas episode run 11 --stages 2 --dry-run
 
-  Generate images (2 frames per scene, ~$1.50 per episode):
+  Generate images (2 layers per scene, ~$1.50 per episode):
     uv run atlas episode run 11 --stages 2
 
-  Output: episodes/c03_e11_token/images/S01_a.png, S01_b.png, ...
+  Output: episodes/c03_e11_token/images/S01_bg.png, S01_fg.png, ...
 
-  Each scene gets TWO frames: S01_a.png and S01_b.png. Frame B is generated as
-  a near-identical VARIATION of frame A (same composition, one small detail
-  shifted). BOTH frames are used — stage 3 alternates between them (~2 fps) so
-  each slide carries a subtle 2-frame animation. They are NOT competing
-  candidates to pick between.
+  Each scene is rendered as TWO LAYERS, not one flat image:
+    - S01_bg.png  the static BACKGROUND — the setting plus the on_screen_text
+                  headline, with no characters or focal objects.
+    - S01_fg.png  the FOREGROUND — the characters and main objects only, on a
+                  transparent background.
+  Stage 3 composites the foreground over the background and gently floats it up
+  and down (~±10px) while the background stays still, giving each slide a calm,
+  dynamic parallax feel instead of a flat still. (Older episodes that still have
+  S01_a/S01_b frames assemble via the legacy 2-frame alternation.)
 
   Every image is a cozy 16-bit pixel-art slide. Scenes the script marked
-  atlas_in_scene=true include the Atlas mascot (rendered from the locked
-  Bible references using the scene's atlas_pose); other scenes are pure
-  pixel-art explainers with no character. The short on_screen_text headline
-  is rendered directly INTO the image.
+  atlas_in_scene=true put the Atlas mascot in the foreground layer (rendered
+  from the locked Bible references using the scene's atlas_pose); other scenes
+  have pure pixel-art props as the foreground. The short on_screen_text headline
+  stays crisp and still on the background layer.
 
   Image size and quality (lower = faster and cheaper while iterating):
     --quality low|medium|high|auto   default: high
@@ -140,7 +144,7 @@ Replace 11 with your episode number.
   Example — quick, cheap drafts while tuning prompts:
     uv run atlas episode run 11 --stages 2 --quality low
 
-  Review the frames. If a scene came out awkward, re-roll BOTH of its frames:
+  Review the layers. If a scene came out awkward, re-roll both layers:
     uv run atlas episode regen 11 S03
 
   (regen is shorthand for: episode run 11 --stages 2 --scene S03 --force)
@@ -149,10 +153,10 @@ Replace 11 with your episode number.
     --image-provider openai   gpt-image-2 — the default
     --image-provider local    your own local model behind an HTTP server (free)
   The default can also be set via IMAGE_PROVIDER in .env. The 'local' provider
-  POSTs each prompt (plus any Atlas/frame reference images) to IMAGE_LOCAL_URL
-  and writes back the PNG, so you can run your own FLUX.2 backend with no API
-  cost; stages downstream don't care which provider made the frames. See the
-  next section to stand one up.
+  POSTs each prompt (plus any Atlas reference images, and a transparent flag for
+  the foreground layer) to IMAGE_LOCAL_URL and writes back the PNG, so you can
+  run your own FLUX.2 backend with no API cost; stages downstream don't care
+  which provider made the layers. See the next section to stand one up.
 
 
   RUNNING YOUR OWN IMAGE BACKEND (FLUX.2, optional — wire up any time)
@@ -179,11 +183,12 @@ Replace 11 with your episode number.
     3. Run stage 2 against your backend:
          uv run atlas episode run 11 --stages 2 --image-provider local
 
-  The endpoint receives {prompt, width, height, reference_images[], steps} and
-  returns a PNG. reference_images carries the locked Atlas Bible PNGs (mascot
-  scenes) or frame A (when making frame B), base64-encoded; an empty list means
-  plain text-to-image. Full contract, a GPU-free test stub, and the ComfyUI
-  shim live in docs/local_image_server.md and docs/comfyui_local_image_server.md.
+  The endpoint receives {prompt, width, height, reference_images[], steps,
+  transparent} and returns a PNG. Each scene makes two calls: an opaque
+  background, then a transparent foreground (transparent=true -> return an RGBA
+  cutout; Atlas scenes also pass the bible PNGs as reference_images so the mascot
+  stays on-model). Full contract, a GPU-free test stub, and the ComfyUI shim live
+  in docs/local_image_server.md and docs/comfyui_local_image_server.md.
 
 
   STAGE 3 — Audio + Video
@@ -192,7 +197,8 @@ Replace 11 with your episode number.
     uv run atlas episode run 11 --stages 3 --lang en --overlay ko
 
   This produces one MP4 with English voice and Korean captions. Each slide
-  gently alternates between its two frames (~2 fps) for a subtle animation.
+  composites its foreground layer over its background and gently floats it up and
+  down for a subtle parallax animation (older a/b episodes alternate frames).
 
   TTS provider:
     --tts supertonic   local, on-device, FREE — the default (no API cost)
@@ -235,11 +241,13 @@ Replace 11 with your episode number.
   actual audio duration. A warning is printed when the difference exceeds
   0.5 seconds.
 
-  Assembly behavior (automatic): each scene is a static image (no zoom).
+  Assembly behavior (automatic): each scene holds a static background while its
+  foreground layer floats gently up and down (~±10px over ~2.5s; no zoom).
   Scenes blend with a ~0.4s crossfade. Any trailing silence baked into the
   TTS is trimmed, then a uniform ~0.9s pause is held after each line so the
-  pacing is consistent. These constants live at the top of assemble_video()
-  in src/atlas_pipeline/stage3_video.py if you want to tune the feel.
+  pacing is consistent. These constants — including float_amplitude and
+  float_period — live at the top of assemble_video() in
+  src/atlas_pipeline/stage3_video.py if you want to tune the feel.
 
 
 THE SCRIPT (script.json)
@@ -306,10 +314,9 @@ TYPICAL WORKFLOW FOR ONE EPISODE
 
   uv run atlas episode run 11 --stages 1          # generate script
   # edit script.json if needed
-  uv run atlas episode run 11 --stages 2          # generate images
-  uv run atlas episode select 11 S01 a            # select candidates
-  uv run atlas episode select 11 S02 b
-  # ... repeat for all scenes
+  uv run atlas episode run 11 --stages 2          # generate images (bg + fg layers)
+  uv run atlas episode regen 11 S03               # re-roll an awkward scene's layers
+  # ... review images, repeat as needed
   uv run atlas episode run 11 --stages 3 --lang en --overlay ko
   # review the MP4
 
@@ -333,8 +340,8 @@ FILE STRUCTURE
       script.json                Stage 1 output
       image_prompts.json         Stage 2 intermediate
       images/
-        S01_a.png                Frame A (both frames are used in the video)
-        S01_b.png                Frame B (variation of A; alternates with A)
+        S01_bg.png               Background layer (static: setting + headline)
+        S01_fg.png               Foreground layer (transparent; floats in the video)
       audio/
         S01_en.wav               English TTS per scene (.wav local / .mp3 OpenAI)
         S01_ko.wav               Korean TTS per scene

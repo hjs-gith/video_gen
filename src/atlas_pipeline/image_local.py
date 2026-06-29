@@ -3,9 +3,12 @@
 The pipeline POSTs a prompt plus a list of reference images; the list length selects
 the mode, which maps directly onto FLUX.2 [klein]'s multi-reference editing:
 
-    reference_images == []          -> text-to-image          (non-Atlas frame A)
-    reference_images == [bible...]  -> reference-conditioned   (Atlas frame A)
-    reference_images == [frame_a]   -> img2img variation       (frame B)
+    reference_images == []          -> text-to-image          (background layer)
+    reference_images == [bible...]  -> reference-conditioned   (Atlas foreground)
+
+When ``transparent`` is set, the server must return an RGBA PNG with the subject
+isolated on a transparent background (e.g. via rembg/segmentation) — used for the
+floating foreground layer that is composited over the static background in stage 3.
 
 The server (which lives outside this repo) must implement the contract in
 docs/local_image_server.md. Dependency-free: stdlib urllib/json/base64 only.
@@ -34,8 +37,13 @@ def synthesize_image(
     size: str,
     out_path: Path,
     reference_paths: list[Path] | None = None,
+    transparent: bool = False,
 ) -> None:
-    """Render one image via the local HTTP server and write it to out_path (PNG)."""
+    """Render one image via the local HTTP server and write it to out_path (PNG).
+
+    When ``transparent`` is True the server is asked to return an RGBA cutout
+    (transparent background) for the floating foreground layer.
+    """
     width, height = _parse_size(size)
     refs = [
         base64.b64encode(Path(p).read_bytes()).decode()
@@ -47,6 +55,7 @@ def synthesize_image(
         "height": height,
         "reference_images": refs,
         "steps": IMAGE_LOCAL_STEPS,
+        "transparent": transparent,
     }).encode()
 
     req = urllib.request.Request(

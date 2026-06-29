@@ -35,14 +35,22 @@ def test_pose_inferred_from_beat_when_absent(sample_script):
     assert result["scenes"][1]["pose_hint"] == "pointing"
 
 
-def test_variation_suffix_used_only_for_frame_b():
-    # The suffix is a stage-2 constant appended only on the frame-B path.
-    assert "ALTERNATE FRAME" in stage2_images._VARIATION_SUFFIX
-    # It is not baked into the base prompt produced by build_image_prompts.
-    result = stage2_images.build_image_prompts(
-        {"meta": {"tier": "2"}, "scenes": [
-            {"scene_id": "S01", "beat": "HOOK", "narration": {}, "visual_intent": "x",
-             "on_screen_text": {"en": "Hi"}, "atlas_in_scene": False}
-        ]}
-    )
-    assert stage2_images._VARIATION_SUFFIX not in result["scenes"][0]["image_prompt"]
+def test_layered_prompts_split_background_and_foreground(sample_script):
+    # build_image_prompts emits a background layer (setting + headline, no subject)
+    # and a foreground layer (subject only, transparent, no headline).
+    result = stage2_images.build_image_prompts(sample_script, overlay_lang="en")
+    assert result["meta"]["animation"] == "layered"
+
+    atlas_scene = result["scenes"][0]  # atlas_in_scene = True
+    bg, fg = atlas_scene["image_prompt_bg"], atlas_scene["image_prompt_fg"]
+
+    # Atlas (the focal subject) belongs to the foreground, never the background.
+    assert stage2_images.ATLAS_CHARACTER_BLURB in fg
+    assert stage2_images.ATLAS_CHARACTER_BLURB not in bg
+
+    # Headline text lives on the (static) background; the foreground carries none.
+    assert "What is a token?" in bg
+    assert "What is a token?" not in fg
+
+    # The foreground is explicitly a transparent cutout.
+    assert "TRANSPARENT" in fg.upper()
