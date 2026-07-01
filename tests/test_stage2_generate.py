@@ -1,4 +1,4 @@
-"""Tests for stage-2 image generation (background + transparent foreground), mocked API."""
+"""Tests for stage-2 image generation (frame A + frame-B variation), mocked API."""
 from __future__ import annotations
 
 import pytest
@@ -38,35 +38,30 @@ def _prompts():
             "pose_hint": "pointing",
             "atlas_in_scene": False,
             "image_prompt": "draw a token",
-            "image_prompt_bg": "draw the setting",
-            "image_prompt_fg": "draw the token only",
         }],
     }
 
 
-def test_generates_background_then_transparent_foreground(tmp_path, fake_client):
+def test_generates_both_frames_b_from_a(tmp_path, fake_client):
     stage2_images.generate_images(_prompts(), tmp_path)
     imgs = tmp_path / "images"
-    assert (imgs / "S01_bg.png").exists()
-    assert (imgs / "S01_fg.png").exists()
+    assert (imgs / "S01_a.png").exists()
+    assert (imgs / "S01_b.png").exists()
 
     kinds = [c[0] for c in fake_client]
-    # Non-atlas scene: both layers via generate (no reference images).
-    assert kinds == ["generate", "generate"]
-    bg_kwargs, fg_kwargs = fake_client[0][1], fake_client[1][1]
-    # Background is opaque; foreground requests native transparency.
-    assert "background" not in bg_kwargs
-    assert bg_kwargs["prompt"] == "draw the setting"
-    assert fg_kwargs["background"] == "transparent"
-    assert fg_kwargs["output_format"] == "png"
-    assert fg_kwargs["prompt"] == "draw the token only"
+    # Frame A via generate (no atlas), frame B via edit (variation).
+    assert kinds == ["generate", "edit"]
+    edit_kwargs = fake_client[1][1]
+    assert stage2_images._VARIATION_SUFFIX in edit_kwargs["prompt"]
+    # The edit is fed an opened file handle (frame A).
+    assert hasattr(edit_kwargs["image"], "read")
 
 
 def test_skips_existing_without_force(tmp_path, fake_client):
     imgs = tmp_path / "images"
     imgs.mkdir()
-    (imgs / "S01_bg.png").write_bytes(b"existing")
-    (imgs / "S01_fg.png").write_bytes(b"existing")
+    (imgs / "S01_a.png").write_bytes(b"existing")
+    (imgs / "S01_b.png").write_bytes(b"existing")
     stage2_images.generate_images(_prompts(), tmp_path)
     assert fake_client == []  # nothing regenerated
 
@@ -76,5 +71,5 @@ def test_scene_filter(tmp_path, fake_client):
     prompts["scenes"].append({**prompts["scenes"][0], "scene_id": "S02"})
     stage2_images.generate_images(prompts, tmp_path, scene_filter="S02")
     imgs = tmp_path / "images"
-    assert not (imgs / "S01_bg.png").exists()
-    assert (imgs / "S02_bg.png").exists()
+    assert not (imgs / "S01_a.png").exists()
+    assert (imgs / "S02_a.png").exists()

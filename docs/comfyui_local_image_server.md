@@ -27,27 +27,17 @@ the node graph keyed by node id; you patch a few node inputs per request.
 
 ## Mode → template mapping
 
-Stage 2 makes two calls per scene — an opaque **background** then a transparent
-**foreground** (`transparent: true`). The shim picks a template from `transparent` +
-`reference_images`:
+The shim picks a template by `reference_images` length:
 
-| Call | Request fields | Template | FLUX.2 klein wiring |
-| --- | --- | --- | --- |
-| Background | `transparent:false`, `reference_images:[]` | `workflow_txt2img.json` | CLIPTextEncode → sampler → VAEDecode → SaveImage |
-| Foreground (non-Atlas) | `transparent:true`, `reference_images:[]` | `workflow_txt2img.json` + cutout | …→ SaveImage, then segment to RGBA |
-| Foreground (Atlas) | `transparent:true`, bible PNGs (1–2) | `workflow_edit.json` + cutout | LoadImage(s) → VAEEncode (FLUX.2 VAE) → **Multi ReferenceLatent** → sampler, then segment to RGBA |
+| `reference_images` | Template | FLUX.2 klein wiring |
+| --- | --- | --- |
+| `[]` | `workflow_txt2img.json` | CLIPTextEncode → sampler → VAEDecode → SaveImage |
+| bible PNGs (1–2) | `workflow_edit.json` | LoadImage(s) → VAEEncode (FLUX.2 VAE) → **Multi ReferenceLatent** → sampler |
+| `[frame_a]` | `workflow_edit.json` | one LoadImage reference |
 
 For each request the shim patches: the **positive CLIPTextEncode** text, **width/height**
 (EmptyLatentImage or the sampler's latent), a fresh **seed**, and — for the edit
-template — the **LoadImage `image` filename(s)** to the just-uploaded references. When
-`transparent` is true it must also **cut the subject out to RGBA** (see below).
-
-### Transparency (foreground layer)
-
-ComfyUI/FLUX render opaque images, so for `transparent: true` add a background-removal
-step before returning — either an `rembg`/segmentation custom node inside the workflow
-(e.g. `Image Remove Background (rembg)`) whose `SaveImage` writes an RGBA PNG, or remove
-it in the shim after fetching the bytes (`pip install rembg`). Return the RGBA PNG.
+template — the **LoadImage `image` filename(s)** to the just-uploaded references.
 
 ## Which model
 
@@ -96,7 +86,6 @@ class Req(BaseModel):
     height: int = 864
     reference_images: list[str] = []
     steps: int = 28
-    transparent: bool = False
 
 def _upload(png_b64: str) -> str:
     data = base64.b64decode(png_b64)
@@ -137,9 +126,6 @@ def generate(req: Req):
     png = requests.get(f"{COMFY}/view", params={
         "filename": img["filename"], "subfolder": img.get("subfolder", ""),
         "type": img.get("type", "output")}).content
-    if req.transparent:                       # foreground layer -> isolate to RGBA
-        from rembg import remove              # pip install rembg  (or use a node)
-        png = remove(png)
     return Response(content=png, media_type="image/png")
 ```
 
@@ -152,12 +138,10 @@ def generate(req: Req):
    (match by `class_type`: CLIPTextEncode = prompt, EmptyLatentImage/EmptySD3LatentImage
    = latent, the sampler's seed node = seed, SaveImage = save, LoadImage = references).
 3. The edit template needs as many `LoadImage` nodes as the most references you'll send
-   (Atlas foregrounds send up to 2 bible images). If you send fewer than the template
-   has, either give unused LoadImage nodes a harmless default image or use the "Flux
-   Klein Ref Grid" approach to stitch references into one image.
-4. Keep width/height consistent so the background and foreground match for the stage-3
-   parallax composite. For `transparent` foregrounds, add the rembg cutout (shown above)
-   or a background-removal node so the returned PNG is RGBA.
+   (Atlas frame A sends up to 2 bible images; frame B sends 1). If you send fewer than
+   the template has, either give unused LoadImage nodes a harmless default image or use
+   the "Flux Klein Ref Grid" approach to stitch references into one image.
+4. Keep width/height consistent so frame A and frame B match for the stage-3 animation.
 
 ## Verify without wiring FLUX yet
 

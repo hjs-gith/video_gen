@@ -139,23 +139,15 @@ def episode_status(episode_number):
         scenes = script.get("scenes", [])
         for s in scenes:
             sid = s["scene_id"]
-            has_bg = (ep_dir / "images" / f"{sid}_bg.png").exists()
-            has_fg = (ep_dir / "images" / f"{sid}_fg.png").exists()
             has_a = (ep_dir / "images" / f"{sid}_a.png").exists()
             has_b = (ep_dir / "images" / f"{sid}_b.png").exists()
             has_en = _has_audio(ep_dir, sid, "en")
             has_ko = _has_audio(ep_dir, sid, "ko")
-            if has_bg or has_fg:
-                img_status = (
-                    "[green]BG+FG[/green]" if has_bg and has_fg
-                    else "[yellow]partial[/yellow]"
-                )
-            else:
-                img_status = (
-                    "[green]A+B[/green]" if has_a and has_b
-                    else "[yellow]partial[/yellow]" if has_a or has_b
-                    else "[red]missing[/red]"
-                )
+            img_status = (
+                "[green]A+B[/green]" if has_a and has_b
+                else "[yellow]partial[/yellow]" if has_a or has_b
+                else "[red]missing[/red]"
+            )
             audio_status = f"EN={'✓' if has_en else '✗'} KO={'✓' if has_ko else '✗'}"
             table.add_row(sid, f"img:{img_status} audio:{audio_status}")
 
@@ -173,7 +165,7 @@ def episode_status(episode_number):
 @click.option("--size", default=None, help="Image size WxH (default: config IMAGE_SIZE).")
 @click.option("--image-provider", default=None, type=click.Choice(["openai", "local"]), help="Image provider (default: config IMAGE_PROVIDER). 'local' needs your HTTP server running.")
 def episode_regen(episode_number, scene_id, quality, size, image_provider):
-    """Re-generate the background + foreground image layers for one (awkward) scene (e.g. atlas episode regen 11 S03)."""
+    """Re-generate both image frames for one (awkward) scene (e.g. atlas episode regen 11 S03)."""
     from .curriculum import get_episode
     from .stage2_images import build_image_prompts, generate_images
     from .utils import episode_dir, load_json, save_json
@@ -216,10 +208,9 @@ def episode_list(cluster):
         has_script = (ep_dir / "script.json").exists()
         images_dir = ep_dir / "images"
         if images_dir.exists():
-            bg_frames = {p.name[:-7] for p in images_dir.glob("*_bg.png")}
             a_frames = {p.name[:-6] for p in images_dir.glob("*_a.png")}
             b_frames = {p.name[:-6] for p in images_dir.glob("*_b.png")}
-            img_count = len(bg_frames | (a_frames & b_frames))
+            img_count = len(a_frames & b_frames)
         else:
             img_count = 0
         mp4s = len(list(ep_dir.glob("*.mp4")))

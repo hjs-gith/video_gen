@@ -58,19 +58,6 @@ def test_posts_payload_and_writes_raw_png(tmp_path, monkeypatch):
     assert body["width"] == 1536 and body["height"] == 864
     assert body["reference_images"] == [base64.b64encode(_tiny_png()).decode()]
     assert "steps" in body
-    assert body["transparent"] is False  # opaque by default
-
-
-def test_transparent_flag_forwarded(tmp_path, monkeypatch):
-    captured = {}
-
-    def fake_urlopen(req, timeout=None):
-        captured["body"] = json.loads(req.data)
-        return _FakeResp(_tiny_png(), "image/png")
-
-    monkeypatch.setattr(image_local.urllib.request, "urlopen", fake_urlopen)
-    image_local.synthesize_image("x", "512x512", tmp_path / "o.png", None, transparent=True)
-    assert captured["body"]["transparent"] is True
 
 
 def test_accepts_json_base64_response(tmp_path, monkeypatch):

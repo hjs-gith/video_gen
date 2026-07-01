@@ -23,8 +23,7 @@ Other env knobs: `IMAGE_LOCAL_MODEL` (label used in the cost log, default
   "width": 1536,
   "height": 864,
   "reference_images": ["<base64 PNG>", "..."],
-  "steps": 28,
-  "transparent": false
+  "steps": 28
 }
 ```
 
@@ -32,30 +31,21 @@ Respond with **HTTP 200** and either:
 - the raw PNG bytes (`Content-Type: image/png`), or
 - JSON `{"image_base64": "<base64 PNG>"}`.
 
-Honor `width`/`height` exactly — the background and foreground layers must match in
-size so the foreground composites and floats cleanly over the background in stage 3.
+Honor `width`/`height` exactly — frames A and B must match in size so they alternate
+cleanly in the assembled video.
 
-### Two layers per scene: `transparent` + `reference_images`
+### `reference_images` selects the mode
 
-Stage 2 renders **two layers** per scene (a parallax pair, composited in stage 3): a
-static **background** and a floating **foreground**. Two request fields tell your
-server which one to produce:
+The list length tells your server what to do (this maps directly onto FLUX.2
+[klein]'s text-to-image + multi-reference editing in one model):
 
-| Call | `transparent` | `reference_images` | What to render |
-| --- | --- | --- | --- |
-| Background | `false` | `[]` | the setting + headline, **no** focal subject — an opaque PNG |
-| Foreground (non-Atlas) | `true` | `[]` | the focal prop(s) only, on a **transparent** background |
-| Foreground (Atlas) | `true` | Atlas bible PNGs (1–2) | Atlas + focal prop(s), transparent, conditioned on the refs so the mascot stays on-model |
+| `reference_images` | Mode | Used for |
+| --- | --- | --- |
+| `[]` | text → image | non-Atlas frame A |
+| Atlas bible PNGs (1–2) | reference-conditioned generation | Atlas frame A (keeps the mascot on-model) |
+| `[frame_a.png]` | img2img variation | frame B (a near-identical alternate frame) |
 
-**When `transparent` is true, return an RGBA PNG with the subject isolated on a fully
-transparent background** (alpha = 0 everywhere except the subject). FLUX doesn't emit
-alpha natively, so cut it out after generating — e.g. `rembg`/segmentation, or generate
-on a flat key color and remove it. (OpenAI uses its native `background="transparent"`
-instead; that path is handled inside the pipeline, not here.)
-
-> Note: stage 2 splits one `visual_intent` into a "background setting" prompt and a
-> "focal subject" prompt. If a prop reads as belonging to both, refine that scene's
-> `visual_intent`/`on_screen_text` so the subject is clearly the foreground.
+So a single endpoint covers every stage-2 call.
 
 ## Which model
 
@@ -87,7 +77,6 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from PIL import Image
 # from your_flux2_klein import pipe   # load FLUX.2 [klein] once at startup
-# from rembg import remove           # or any segmentation model, for cutouts
 
 app = FastAPI()
 
@@ -97,7 +86,6 @@ class Req(BaseModel):
     height: int = 864
     reference_images: list[str] = []
     steps: int = 28
-    transparent: bool = False
 
 @app.post("/generate")
 def generate(r: Req):
@@ -110,8 +98,6 @@ def generate(r: Req):
         num_inference_steps=r.steps,
         reference_images=refs or None,   # adapt to your FLUX.2 pipeline's kwarg
     ).images[0]
-    if r.transparent:
-        image = remove(image.convert("RGBA"))  # isolate subject on transparent bg
     buf = io.BytesIO(); image.save(buf, format="PNG")
     return Response(content=buf.getvalue(), media_type="image/png")
 ```
@@ -119,37 +105,23 @@ def generate(r: Req):
 ## Testing the wiring without a GPU
 
 You can verify the pipeline end-to-end with a stub that ignores the prompt and
-returns a solid background, or a semi-transparent block for the foreground so the
-float is visible:
+returns a solid-color PNG:
 
 ```python
 # stub_server.py
 import io
 from fastapi import FastAPI
 from fastapi.responses import Response
-from pydantic import BaseModel
 from PIL import Image
 app = FastAPI()
 
-class Req(BaseModel):
-    width: int = 1536
-    height: int = 864
-    transparent: bool = False
-
 @app.post("/generate")
-async def generate(r: Req):
-    if r.transparent:                                  # foreground: a floating box
-        img = Image.new("RGBA", (r.width, r.height), (0, 0, 0, 0))
-        img.paste((230, 120, 60, 255), (r.width // 3, r.height // 3,
-                                        2 * r.width // 3, 2 * r.height // 3))
-    else:                                              # background: solid fill
-        img = Image.new("RGB", (r.width, r.height), (40, 120, 90))
-    buf = io.BytesIO(); img.save(buf, "PNG")
+async def generate():
+    buf = io.BytesIO(); Image.new("RGB", (1536, 864), (40, 120, 90)).save(buf, "PNG")
     return Response(content=buf.getvalue(), media_type="image/png")
 # uvicorn stub_server:app --port 8000
 ```
 
 Then `uv run atlas episode run 11 --stages 2 --scene S01 --image-provider local
---force` should write `S01_bg.png` and `S01_fg.png`, and `uv run atlas costs` should
-show `$0` `2_images` rows. Run stage 3 and you'll see the orange block gently bob over
-the green background.
+--force` should write `S01_a.png` and `S01_b.png`, and `uv run atlas costs` should
+show `$0` `2_images` rows.

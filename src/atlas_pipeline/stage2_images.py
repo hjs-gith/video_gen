@@ -38,35 +38,16 @@ _CONSTRAINTS = """\
 _CHARACTER_RULE_ATLAS = "Atlas is the only character; no realistic humans, no photographic faces"
 _CHARACTER_RULE_NONE = "No characters; show only the pixel-art props, icons, and text described"
 
-# Layer-specific rules for the parallax scheme: a static background layer and a
-# transparent foreground (the focal subject) that gently floats over it in stage 3.
-_CHARACTER_RULE_BG = (
-    "Render ONLY the background setting and the headline — NO characters and NO "
-    "central focal objects. Leave the focal area open/empty so a separate foreground "
-    "layer can be composited on top"
-)
-_CHARACTER_RULE_FG_ATLAS = (
-    "Render ONLY Atlas and the essential focal object(s) — nothing else: no setting, "
-    "no scenery, no background fill, no headline text"
-)
-_CHARACTER_RULE_FG_NONE = (
-    "Render ONLY the essential focal object(s)/prop(s) described — nothing else: no "
-    "setting, no scenery, no background fill, no headline text"
-)
-
-_BG_LAYER_NOTE = (
-    "LAYER — BACKGROUND: This is the static backdrop of a parallax scene. Include the "
-    "headline text. Do NOT draw the focal subject; leave its area open so the "
-    "foreground layer sits on top cleanly."
-)
-_FG_LAYER_NOTE = (
-    "LAYER — FOREGROUND: Render the focal subject(s) only, centered, on a FULLY "
-    "TRANSPARENT background (PNG alpha). No background fill, no scenery, no headline "
-    "text, no ground/contact shadow. This layer is composited over the background and "
-    "gently floats up and down, so keep generous empty margins around the subject."
-)
-
 _RENDERING_SPEC = "Quality: high. Format: 16:9 educational slide ready for video voiceover."
+
+# Appended to frame B's prompt. Frame B is generated as an edit of frame A so the
+# two alternate cleanly as a 2-frame animation loop in the video (stage 3).
+_VARIATION_SUFFIX = (
+    "ALTERNATE FRAME: Produce a near-identical alternate of the provided image for "
+    "a 2-frame animation loop. Keep the exact same composition, layout, colors, and "
+    "all text identical; change only a small natural detail (a slight pose, shadow, "
+    "or highlight shift)."
+)
 
 
 def _build_prompt(
@@ -76,53 +57,27 @@ def _build_prompt(
     atlas_in_scene: bool,
     pose: str,
     size: str,
-    layer: str | None = None,
 ) -> str:
-    """Build the image prompt for a scene.
-
-    ``layer`` selects what gets drawn:
-      - ``None`` -> the legacy full scene (background + subject + headline)
-      - ``"bg"`` -> background/setting + headline only, no focal subject
-      - ``"fg"`` -> the focal subject only, on a transparent background, no headline
-    """
     style = SERIES_STYLE_BLOCK.format(tier_hex=tier_hex)
     on_screen = scene.get("on_screen_text", {})
     text = on_screen.get(overlay_lang, on_screen.get("en", ""))
     position = on_screen.get("position", "center")
     visual_intent = scene.get("visual_intent", "")
 
-    parts = [_DELIVERABLE, style]
+    layout = f'Canvas: {size}. Headline position: {position}.'
+    content = f'Headline (verbatim, exact spelling): "{text}"\nVisual element: {visual_intent}'
 
-    # Atlas is the focal subject, so its description belongs with the layer that
-    # actually draws it: the foreground (or the legacy full frame), never the bg.
-    if atlas_in_scene and layer != "bg":
+    parts = [_DELIVERABLE, style]
+    if atlas_in_scene:
         parts.append(ATLAS_CHARACTER_BLURB)
         parts.append(
-            f"Atlas appears with a {pose} pose, integrated into the action described "
-            "below; match Atlas to the reference image(s) provided."
+            f"Atlas appears in this scene with a {pose} pose, integrated into the "
+            "action described below; match Atlas to the reference image(s) provided."
         )
-
-    if layer == "bg":
-        layout = f'Canvas: {size}. Headline position: {position}.'
-        content = f'Headline (verbatim, exact spelling): "{text}"\nBackground setting: {visual_intent}'
-        character_rule = _CHARACTER_RULE_BG
-        layer_note = _BG_LAYER_NOTE
-    elif layer == "fg":
-        layout = f'Canvas: {size}. Transparent background (RGBA).'
-        content = f'Focal subject(s): {visual_intent}'
-        character_rule = _CHARACTER_RULE_FG_ATLAS if atlas_in_scene else _CHARACTER_RULE_FG_NONE
-        layer_note = _FG_LAYER_NOTE
-    else:
-        layout = f'Canvas: {size}. Headline position: {position}.'
-        content = f'Headline (verbatim, exact spelling): "{text}"\nVisual element: {visual_intent}'
-        character_rule = _CHARACTER_RULE_ATLAS if atlas_in_scene else _CHARACTER_RULE_NONE
-        layer_note = None
-
+    character_rule = _CHARACTER_RULE_ATLAS if atlas_in_scene else _CHARACTER_RULE_NONE
     constraints = _CONSTRAINTS.format(tier_hex=tier_hex, character_rule=character_rule)
-    parts.extend([layout, content, constraints])
-    if layer_note:
-        parts.append(layer_note)
-    parts.append(_RENDERING_SPEC)
+
+    parts.extend([layout, content, constraints, _RENDERING_SPEC])
     return "\n\n".join(parts)
 
 
@@ -147,7 +102,7 @@ def build_image_prompts(
         if atlas_in_scene is None:
             atlas_in_scene = beat in ATLAS_BEATS or "atlas" in scene.get("visual_intent", "").lower()
 
-        common = (scene, tier_hex, overlay_lang, atlas_in_scene, pose, size)
+        prompt = _build_prompt(scene, tier_hex, overlay_lang, atlas_in_scene, pose, size)
         scenes_out.append({
             "scene_id": scene["scene_id"],
             "beat": beat,
@@ -155,9 +110,7 @@ def build_image_prompts(
             "atlas_in_scene": atlas_in_scene,
             "visual_intent_source": scene.get("visual_intent", ""),
             "on_screen_text_used": scene.get("on_screen_text", {}).get(overlay_lang, ""),
-            "image_prompt": _build_prompt(*common),
-            "image_prompt_bg": _build_prompt(*common, layer="bg"),
-            "image_prompt_fg": _build_prompt(*common, layer="fg"),
+            "image_prompt": prompt,
         })
 
     result = {
@@ -169,7 +122,6 @@ def build_image_prompts(
             "image_model": IMAGE_MODEL,
             "image_size": size,
             "image_quality": quality,
-            "animation": "layered",  # bg + floating fg (stage 3); see _generate_*.
             "scene_count": len(scenes_out),
         },
         "scenes": scenes_out,
@@ -178,8 +130,7 @@ def build_image_prompts(
     if dry_run:
         for s in scenes_out:
             console.print(f"\n[bold]{s['scene_id']}[/bold] ({s['beat']}, pose={s['pose_hint']}, atlas={s['atlas_in_scene']})")
-            console.print(f"[dim]— background layer —[/dim]\n{s['image_prompt_bg'][:300]} ...")
-            console.print(f"[dim]— foreground layer —[/dim]\n{s['image_prompt_fg'][:300]} ...")
+            console.print(s["image_prompt"][:400] + "...")
         return result
 
     return result
@@ -207,27 +158,28 @@ def generate_images(
         if scene_filter and sid != scene_filter:
             continue
 
-        path_bg = images_dir / f"{sid}_bg.png"
-        path_fg = images_dir / f"{sid}_fg.png"
+        path_a = images_dir / f"{sid}_a.png"
+        path_b = images_dir / f"{sid}_b.png"
 
-        # Background layer — the static backdrop (setting + headline, no subject).
-        if path_bg.exists() and not force:
-            console.print(f"[dim]{path_bg.name} exists — skipping[/dim]")
+        # Frame A — the base frame.
+        if path_a.exists() and not force:
+            console.print(f"[dim]{path_a.name} exists — skipping[/dim]")
         elif dry_run:
-            console.print(f"[dim]DRY RUN: Would generate {path_bg.name} ({provider})[/dim]")
+            console.print(f"[dim]DRY RUN: Would generate {path_a.name} ({provider})[/dim]")
         else:
-            console.print(f"Generating {path_bg.name} ({provider}, {size}, quality={quality}) ...")
-            _generate_background(scene, path_bg, episode_id, size, quality, provider)
+            console.print(f"Generating {path_a.name} ({provider}, {size}, quality={quality}) ...")
+            _generate_frame_a(scene, path_a, episode_id, size, quality, provider)
 
-        # Foreground layer — the focal subject on a transparent background, which
-        # stage 3 floats over the background for a dynamic parallax scene.
-        if path_fg.exists() and not force:
-            console.print(f"[dim]{path_fg.name} exists — skipping[/dim]")
+        # Frame B — a slight variation of A, for the 2-frame animation loop.
+        if path_b.exists() and not force:
+            console.print(f"[dim]{path_b.name} exists — skipping[/dim]")
         elif dry_run:
-            console.print(f"[dim]DRY RUN: Would generate {path_fg.name} (transparent foreground)[/dim]")
+            console.print(f"[dim]DRY RUN: Would generate {path_b.name} (variation of A)[/dim]")
+        elif not path_a.exists():
+            console.print(f"[yellow]No {path_a.name} to vary — skipping {path_b.name}[/yellow]")
         else:
-            console.print(f"Generating {path_fg.name} (transparent foreground) ...")
-            _generate_foreground(scene, path_fg, episode_id, size, quality, provider)
+            console.print(f"Generating {path_b.name} (variation of A) ...")
+            _generate_frame_b(scene, path_b, path_a, episode_id, size, quality, provider)
 
 
 def _render(
@@ -237,70 +189,45 @@ def _render(
     quality: str,
     out_path: Path,
     reference_paths: list[Path],
-    transparent: bool = False,
 ) -> None:
     """Render one image via the chosen provider and write it to out_path.
 
     `reference_paths` empty -> text-to-image; non-empty -> reference/img2img editing.
-    `transparent` -> request an RGBA cutout (foreground layer): the local server
-    returns a transparent PNG; OpenAI uses its native `background="transparent"`.
     """
     if provider == "local":
-        image_local.synthesize_image(prompt, size, out_path, reference_paths, transparent=transparent)
+        image_local.synthesize_image(prompt, size, out_path, reference_paths)
         return
 
     # openai
-    kwargs: dict = {"model": IMAGE_MODEL, "prompt": prompt, "size": size, "quality": quality}
-    if transparent:
-        kwargs["background"] = "transparent"
-        kwargs["output_format"] = "png"
     if reference_paths:
         images = [open(p, "rb") for p in reference_paths]
         try:
             result = image_client.images.edit(
+                model=IMAGE_MODEL,
                 image=images[0] if len(images) == 1 else images,
-                **kwargs,
+                prompt=prompt,
+                size=size,
+                quality=quality,
             )
         finally:
             for f in images:
                 f.close()
     else:
-        result = image_client.images.generate(**kwargs)
+        result = image_client.images.generate(
+            model=IMAGE_MODEL,
+            prompt=prompt,
+            size=size,
+            quality=quality,
+        )
     out_path.write_bytes(base64.b64decode(result.data[0].b64_json))
 
 
-def _generate_background(
+def _generate_frame_a(
     scene: dict, out_path: Path, episode_id: str, size: str, quality: str, provider: str
 ) -> None:
-    """Generate the static background layer: setting + headline, no focal subject."""
+    """Generate the base frame: condition on Atlas bible when in-scene, else text-to-image."""
+    prompt = scene["image_prompt"]
     sid = scene["scene_id"]
-    prompt = scene.get("image_prompt_bg", scene["image_prompt"])
-
-    _render(provider, prompt, size, quality, out_path, [], transparent=False)
-
-    log_api_call(
-        stage="2_images",
-        model=IMAGE_LOCAL_MODEL if provider == "local" else IMAGE_MODEL,
-        tokens_in=0,
-        tokens_out=0,
-        cost_usd=0.0 if provider == "local" else 0.10,
-        episode_id=episode_id,
-        scene_id=sid,
-        extra={"layer": "bg", "provider": provider},
-    )
-    console.print(f"[green]✓[/green] {out_path.name}")
-
-
-def _generate_foreground(
-    scene: dict, out_path: Path, episode_id: str, size: str, quality: str, provider: str
-) -> None:
-    """Generate the floating foreground layer: focal subject on a transparent bg.
-
-    Atlas scenes condition on the bible references to keep the mascot on-model;
-    other scenes are a plain (transparent) text-to-image of the focal prop(s).
-    """
-    sid = scene["scene_id"]
-    prompt = scene.get("image_prompt_fg", scene["image_prompt"])
     atlas_in = scene.get("atlas_in_scene", False)
     pose = scene.get("pose_hint", "neutral")
 
@@ -308,9 +235,10 @@ def _generate_foreground(
     if atlas_in:
         reference_paths = get_bible_paths(pose)
         if not reference_paths:
-            console.print(f"[yellow]No bible images found for pose '{pose}' — generating foreground without references[/yellow]")
+            console.print(f"[yellow]No bible images found for pose '{pose}' — falling back to text-to-image[/yellow]")
+            atlas_in = False
 
-    _render(provider, prompt, size, quality, out_path, reference_paths, transparent=True)
+    _render(provider, prompt, size, quality, out_path, reference_paths)
 
     log_api_call(
         stage="2_images",
@@ -320,6 +248,28 @@ def _generate_foreground(
         cost_usd=0.0 if provider == "local" else (0.12 if atlas_in else 0.10),
         episode_id=episode_id,
         scene_id=sid,
-        extra={"layer": "fg", "atlas_in_scene": atlas_in, "pose": pose, "provider": provider},
+        extra={"atlas_in_scene": atlas_in, "pose": pose, "frame": "a", "provider": provider},
+    )
+    console.print(f"[green]✓[/green] {out_path.name}")
+
+
+def _generate_frame_b(
+    scene: dict, out_path: Path, frame_a_path: Path, episode_id: str, size: str, quality: str, provider: str
+) -> None:
+    """Generate frame B as a near-identical variation of frame A (edit/img2img)."""
+    sid = scene["scene_id"]
+    prompt = scene["image_prompt"] + "\n\n" + _VARIATION_SUFFIX
+
+    _render(provider, prompt, size, quality, out_path, [frame_a_path])
+
+    log_api_call(
+        stage="2_images",
+        model=IMAGE_LOCAL_MODEL if provider == "local" else IMAGE_MODEL,
+        tokens_in=0,
+        tokens_out=0,
+        cost_usd=0.0 if provider == "local" else 0.12,
+        episode_id=episode_id,
+        scene_id=sid,
+        extra={"frame": "b", "variation_of": "a", "provider": provider},
     )
     console.print(f"[green]✓[/green] {out_path.name}")

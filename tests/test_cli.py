@@ -9,7 +9,7 @@ from atlas_pipeline.cli import main
 def test_regen_command_exists():
     res = CliRunner().invoke(main, ["episode", "regen", "--help"])
     assert res.exit_code == 0
-    assert "Re-generate the background + foreground" in res.output
+    assert "Re-generate both image frames" in res.output
 
 
 def test_select_command_removed():

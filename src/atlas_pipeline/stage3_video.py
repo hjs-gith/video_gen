@@ -1,7 +1,6 @@
 """Stage 3: TTS audio generation and video assembly."""
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 import numpy as np
@@ -25,14 +24,6 @@ _DURATION_TOLERANCE_SEC = 0.5
 def _frame_index(t: float, n: int, flip_interval: float) -> int:
     """Which of `n` frames is shown at time `t` when flipping every `flip_interval`."""
     return int(t / flip_interval) % n
-
-
-def _float_offset(t: float, amplitude: float, period: float) -> int:
-    """Vertical pixel offset of the floating foreground layer at time `t`.
-
-    A smooth sine bob: 0 at t=0, swinging ±`amplitude` px every `period` seconds.
-    """
-    return int(round(amplitude * math.sin(2 * math.pi * t / period)))
 
 
 def _audio_path(audio_dir: Path, sid: str, lang: str) -> Path | None:
@@ -195,20 +186,16 @@ def assemble_video(
     tail_gap = 0.8        # uniform pause held after each (trimmed) narration
     silence_thresh = 0.02  # ~-34 dBFS; quieter than this is treated as silence
     keep_tail = 0.10     # natural buffer kept after the last speech sample
-    flip_interval = 0.5  # legacy: seconds per frame when alternating A/B (~2 fps)
-    float_amplitude = 10  # px the foreground floats up/down (layered scenes)
-    float_period = 2.5    # seconds per full up-down float cycle
+    flip_interval = 0.5  # seconds per frame when alternating A/B (~2 fps)
     scene_clips = []
     for scene in script.get("scenes", []):
         sid = scene["scene_id"]
 
-        # Preferred: a static background layer + a transparent foreground that floats.
-        # Fallback (older episodes): the two-frame A/B alternation.
-        img_bg = ep_dir / "images" / f"{sid}_bg.png"
-        img_fg = ep_dir / "images" / f"{sid}_fg.png"
+        # Pick images — frames A and B alternate as a 2-frame animation.
         img_a = ep_dir / "images" / f"{sid}_a.png"
         img_b = ep_dir / "images" / f"{sid}_b.png"
-        if not (img_bg.exists() or img_a.exists() or img_b.exists()):
+        frame_paths = [p for p in (img_a, img_b) if p.exists()]
+        if not frame_paths:
             console.print(f"[yellow]No image for {sid} — skipping scene[/yellow]")
             continue
 
@@ -223,42 +210,25 @@ def assemble_video(
         end = min(_speech_end(audio_clip, silence_thresh) + keep_tail, audio_clip.duration)
         audio_clip = audio_clip.subclipped(0, end)
         duration = audio_clip.duration
-        hold = duration + tail_gap  # linger on the frame after narration ends
+        hold = duration + tail_gap  # linger on the still frame after narration ends
 
-        if img_bg.exists():
-            # Layered parallax: static background, foreground gently floating over it.
-            bg_clip = ImageClip(str(img_bg)).with_duration(hold)
-            w, h = bg_clip.size
-            base_layers = [bg_clip]
-            if img_fg.exists():
-                fg_clip = (
-                    ImageClip(str(img_fg), transparent=True)
-                    .with_duration(hold)
-                    .with_position(
-                        lambda t, a=float_amplitude, p=float_period: (0, _float_offset(t, a, p))
-                    )
-                )
-                base_layers.append(fg_clip)
+        # Visual: alternate A/B every flip_interval across `hold`. One frame -> static.
+        if len(frame_paths) == 1:
+            img_clip = ImageClip(str(frame_paths[0])).with_duration(hold)
+            w, h = img_clip.size
         else:
-            # Legacy A/B: alternate every flip_interval across `hold`. One frame -> static.
-            frame_paths = [p for p in (img_a, img_b) if p.exists()]
-            if len(frame_paths) == 1:
-                img_clip = ImageClip(str(frame_paths[0])).with_duration(hold)
-                w, h = img_clip.size
-            else:
-                # Pre-load the frames once and switch by time — far cheaper than
-                # building (and compositing) dozens of short ImageClips per scene.
-                frames = [ImageClip(str(p)).get_frame(0) for p in frame_paths]
-                n = len(frames)
+            # Pre-load the frames once and switch by time — far cheaper than
+            # building (and compositing) dozens of short ImageClips per scene.
+            frames = [ImageClip(str(p)).get_frame(0) for p in frame_paths]
+            n = len(frames)
 
-                def _make_frame(t, _frames=frames, _n=n, _fi=flip_interval):
-                    return _frames[_frame_index(t, _n, _fi)]
+            def _make_frame(t, _frames=frames, _n=n, _fi=flip_interval):
+                return _frames[_frame_index(t, _n, _fi)]
 
-                img_clip = VideoClip(frame_function=_make_frame, duration=hold)
-                h, w = frames[0].shape[:2]
-            base_layers = [img_clip]
+            img_clip = VideoClip(frame_function=_make_frame, duration=hold)
+            h, w = frames[0].shape[:2]
 
-        layers = list(base_layers)
+        layers = [img_clip]
 
         # Bottom closed captions: the spoken narration in the chosen language
         if overlay != "none":
