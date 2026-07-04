@@ -37,7 +37,7 @@ def test_pose_inferred_from_beat_when_absent(sample_script):
 
 def test_variation_suffix_used_only_for_frame_b():
     # The suffix is a stage-2 constant appended only on the frame-B path.
-    assert "ALTERNATE FRAME" in stage2_images._VARIATION_SUFFIX
+    assert "SECOND FRAME OF A 2-FRAME" in stage2_images._VARIATION_SUFFIX
     # It is not baked into the base prompt produced by build_image_prompts.
     result = stage2_images.build_image_prompts(
         {"meta": {"tier": "2"}, "scenes": [
@@ -45,4 +45,12 @@ def test_variation_suffix_used_only_for_frame_b():
              "on_screen_text": {"en": "Hi"}, "atlas_in_scene": False}
         ]}
     )
-    assert stage2_images._VARIATION_SUFFIX not in result["scenes"][0]["image_prompt"]
+    assert "SECOND FRAME OF A 2-FRAME" not in result["scenes"][0]["image_prompt"]
+
+
+def test_variation_motion_is_scene_specific():
+    # Atlas scenes get an on-model Atlas idle; other scenes move only the accent element.
+    atlas = stage2_images._variation_motion({"atlas_in_scene": True})
+    plain = stage2_images._variation_motion({"atlas_in_scene": False})
+    assert "Atlas" in atlas and "blink" in atlas.lower()
+    assert "Atlas" not in plain and "accent" in plain.lower()

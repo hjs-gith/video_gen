@@ -41,13 +41,42 @@ _CHARACTER_RULE_NONE = "No characters; show only the pixel-art props, icons, and
 _RENDERING_SPEC = "Quality: high. Format: 16:9 educational slide ready for video voiceover."
 
 # Appended to frame B's prompt. Frame B is generated as an edit of frame A so the
-# two alternate cleanly as a 2-frame animation loop in the video (stage 3).
+# two alternate as a 2-frame idle loop in the video (stage 3). The awkward "jitter"
+# comes from the model drifting the WHOLE image; the cure is to hard-lock everything
+# and permit exactly one small, named micro-motion ({motion}, filled per scene).
 _VARIATION_SUFFIX = (
-    "ALTERNATE FRAME: Produce a near-identical alternate of the provided image for "
-    "a 2-frame animation loop. Keep the exact same composition, layout, colors, and "
-    "all text identical; change only a small natural detail (a slight pose, shadow, "
-    "or highlight shift)."
+    "SECOND FRAME OF A 2-FRAME PIXEL-ART IDLE LOOP.\n"
+    "This is frame 2 of a looping idle animation built directly from the provided "
+    "image (frame 1). Reproduce the provided image PIXEL-FOR-PIXEL: identical "
+    "composition and layout, every outline and shape in the same place, all the same "
+    "colors and the same accent color, the same background, and ALL text identical "
+    "(same words, same glyphs, same weight, same position — do NOT re-letter, re-wrap, "
+    "or re-render any text). Do not shift, rescale, recolor, or redraw anything except "
+    "the one element named next.\n"
+    "THE ONLY CHANGE — a subtle micro-motion of just a few pixels:\n"
+    "{motion}\n"
+    "Keep it gentle so frames 1 and 2 alternate as a calm, living loop, never a jump cut."
 )
+
+
+def _variation_motion(scene: dict) -> str:
+    """The single small motion frame B is allowed, chosen to suit the scene.
+
+    Naming one concrete element (and forbidding all others) is what keeps the loop
+    from reading as a glitch — like the second cel of a hand-drawn idle animation.
+    """
+    if scene.get("atlas_in_scene"):
+        return (
+            "Atlas does a tiny idle: its capsule body floats up by about 2 pixels "
+            "(with the charcoal contact-shadow disc beneath shrinking a touch to match), "
+            "and its soft-green pixel face blinks — the eye pixels briefly narrow. "
+            "Atlas stays perfectly on-model; nothing else in the scene moves."
+        )
+    return (
+        "The single accent-colored focal element does a tiny idle: a soft one-step "
+        "glow/brightness pulse, or a 1–2 pixel drift of one small highlight or sparkle "
+        "on it. Every other prop, icon, and pixel stays exactly as in frame 1."
+    )
 
 
 def _build_prompt(
@@ -256,9 +285,10 @@ def _generate_frame_a(
 def _generate_frame_b(
     scene: dict, out_path: Path, frame_a_path: Path, episode_id: str, size: str, quality: str, provider: str
 ) -> None:
-    """Generate frame B as a near-identical variation of frame A (edit/img2img)."""
+    """Generate frame B as the second cel of a 2-frame idle loop (edit of frame A)."""
     sid = scene["scene_id"]
-    prompt = scene["image_prompt"] + "\n\n" + _VARIATION_SUFFIX
+    suffix = _VARIATION_SUFFIX.format(motion=_variation_motion(scene))
+    prompt = scene["image_prompt"] + "\n\n" + suffix
 
     _render(provider, prompt, size, quality, out_path, [frame_a_path])
 

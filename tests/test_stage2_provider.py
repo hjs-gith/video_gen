@@ -51,9 +51,10 @@ def test_local_atlas_frame_a_uses_bible_refs_frame_b_uses_a(tmp_path, local_call
     # Frame A conditions on the two bible paths.
     a, b = synth[0], synth[1]
     assert [p.name for p in a["refs"]] == ["neutral.png", "thinking.png"]
-    # Frame B conditions on frame A and carries the variation suffix.
+    # Frame B conditions on frame A and carries the idle-loop directive + Atlas motion.
     assert b["refs"] == [tmp_path / "images" / "S01_a.png"]
-    assert stage2_images._VARIATION_SUFFIX in b["prompt"]
+    assert "SECOND FRAME OF A 2-FRAME" in b["prompt"]
+    assert "Atlas does a tiny idle" in b["prompt"]
 
     logs = [c for c in local_calls if isinstance(c, tuple)]
     assert all(kw["cost_usd"] == 0.0 and kw["model"] == stage2_images.IMAGE_LOCAL_MODEL for _, kw in logs)

@@ -52,7 +52,7 @@ def test_generates_both_frames_b_from_a(tmp_path, fake_client):
     # Frame A via generate (no atlas), frame B via edit (variation).
     assert kinds == ["generate", "edit"]
     edit_kwargs = fake_client[1][1]
-    assert stage2_images._VARIATION_SUFFIX in edit_kwargs["prompt"]
+    assert "SECOND FRAME OF A 2-FRAME" in edit_kwargs["prompt"]  # idle-loop directive
     # The edit is fed an opened file handle (frame A).
     assert hasattr(edit_kwargs["image"], "read")
 

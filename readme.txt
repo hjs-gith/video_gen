@@ -123,10 +123,13 @@ Replace 11 with your episode number.
   Output: episodes/c03_e11_token/images/S01_a.png, S01_b.png, ...
 
   Each scene gets TWO frames: S01_a.png and S01_b.png. Frame B is generated as
-  a near-identical VARIATION of frame A (same composition, one small detail
-  shifted). BOTH frames are used — stage 3 alternates between them (~2 fps) so
-  each slide carries a subtle 2-frame animation. They are NOT competing
-  candidates to pick between.
+  the SECOND CEL of a 2-frame pixel-art idle loop, edited from frame A: the whole
+  image is hard-locked pixel-for-pixel (same composition, colors, and text) and
+  exactly ONE element makes a tiny few-pixel micro-motion — for Atlas scenes a
+  gentle float-bob + blink, otherwise a soft pulse on the single accent element.
+  Naming one moving element (and forbidding all others) is what keeps the loop
+  from reading as a glitch. BOTH frames are used — stage 3 alternates between them
+  (~2 fps). They are NOT competing candidates to pick between.
 
   Every image is a cozy 16-bit pixel-art slide. Scenes the script marked
   atlas_in_scene=true include the Atlas mascot (rendered from the locked
