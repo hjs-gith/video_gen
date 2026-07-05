@@ -67,15 +67,20 @@ def _variation_motion(scene: dict) -> str:
     """
     if scene.get("atlas_in_scene"):
         return (
-            "Atlas does a tiny idle: its capsule body floats up by about 2 pixels "
-            "(with the charcoal contact-shadow disc beneath shrinking a touch to match), "
-            "and its soft-green pixel face blinks — the eye pixels briefly narrow. "
-            "Atlas stays perfectly on-model; nothing else in the scene moves."
+            "Atlas does a tiny idle float: its whole body drifts up by about 2 pixels "
+            "and tilts very slightly (about 2–3 degrees), as if gently bobbing in place "
+            "(the charcoal contact-shadow disc beneath shrinks a touch to match the lift). "
+            "Its soft-green pixel face stays EXACTLY the same — same eyes, same screen "
+            "expression, same emotion; do NOT blink, do NOT narrow or reshape the eyes, "
+            "do NOT change the face at all. Atlas stays perfectly on-model; nothing else "
+            "in the scene moves."
         )
     return (
-        "The single accent-colored focal element does a tiny idle: a soft one-step "
-        "glow/brightness pulse, or a 1–2 pixel drift of one small highlight or sparkle "
-        "on it. Every other prop, icon, and pixel stays exactly as in frame 1."
+        "The single main focal element does a tiny idle float: it drifts by 1–2 pixels "
+        "and tilts very slightly (about 2–3 degrees), as if gently bobbing in place. "
+        "Its shape, colors, and any face or expression stay EXACTLY the same — only its "
+        "position and tilt change. Every other prop, icon, text, and pixel stays exactly "
+        "as in frame 1."
     )
 
 
