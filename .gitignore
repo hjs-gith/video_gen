@@ -15,3 +15,9 @@ wheels/
 # local TTS model assets (Supertonic / Hugging Face downloads)
 models/
 assets/
+
+# generated episode outputs (script/images/audio/video) — not tracked
+episodes/
+
+# macOS folder metadata
+.DS_Store
