@@ -21,25 +21,89 @@ def main():
     """AI Jargon Atlas — bilingual short-form video course pipeline."""
 
 
-# ── Bible commands ────────────────────────────────────────────────────────────
+# ── Character commands ────────────────────────────────────────────────────────
+
+@main.group()
+def character():
+    """Manage character Bibles — Atlas and any characters you add."""
+
+
+def _resolve_cli_character(character_id: str):
+    from .characters import get_character
+
+    ch = get_character(character_id)
+    if ch is None:
+        console.print(
+            f"[red]Unknown character {character_id!r}. Run 'atlas character list' to see registered characters.[/red]"
+        )
+    return ch
+
+
+@character.command("generate")
+@click.argument("character_id", default="atlas")
+@click.option("--force", is_flag=True, help="Overwrite existing bible images.")
+@click.option("--dry-run", is_flag=True, help="Print what would happen, make no API calls.")
+def character_generate(character_id, force, dry_run):
+    """Generate CHARACTER_ID's pose Bible from its neutral seed image (default: atlas)."""
+    from .atlas_bible import generate_bible
+
+    ch = _resolve_cli_character(character_id)
+    if ch is not None:
+        generate_bible(ch, force=force, dry_run=dry_run)
+
+
+@character.command("lock")
+@click.argument("character_id", default="atlas")
+def character_lock(character_id):
+    """Lock CHARACTER_ID's Bible after human QC approval (default: atlas)."""
+    from .atlas_bible import lock_bible
+
+    ch = _resolve_cli_character(character_id)
+    if ch is not None:
+        lock_bible(ch)
+
+
+@character.command("list")
+def character_list():
+    """List registered characters and their bible status."""
+    from .characters import all_characters
+
+    table = Table(title="Characters")
+    table.add_column("id")
+    table.add_column("name")
+    table.add_column("poses", justify="right")
+    table.add_column("bible")
+    table.add_column("locked")
+    for c in all_characters():
+        table.add_row(
+            c.id,
+            c.display_name,
+            str(len(c.poses)),
+            "[green]✓[/green]" if c.neutral_path.exists() else "[red]·[/red]",
+            "[green]✓[/green]" if c.is_locked() else "[red]·[/red]",
+        )
+    console.print(table)
+
+
+# ── Bible commands (deprecated alias for `character ... atlas`) ─────────────────
 
 @main.group()
 def bible():
-    """Manage the Atlas character Bible images."""
+    """(Deprecated) Manage the Atlas Bible — alias for `character … atlas`."""
 
 
 @bible.command("generate")
 @click.option("--force", is_flag=True, help="Overwrite existing bible images.")
 @click.option("--dry-run", is_flag=True, help="Print what would happen, make no API calls.")
 def bible_generate(force, dry_run):
-    """Copy neutral reference and generate 5 Atlas expression images."""
+    """Copy neutral reference and generate the 5 Atlas expression images."""
     from .atlas_bible import generate_bible
     generate_bible(force=force, dry_run=dry_run)
 
 
 @bible.command("lock")
 def bible_lock():
-    """Lock the Bible after human QC approval."""
+    """Lock the Atlas Bible after human QC approval."""
     from .atlas_bible import lock_bible
     lock_bible()
 
@@ -64,9 +128,9 @@ def episode():
 @click.option("--tts", "tts_provider", default=None, type=click.Choice(["supertonic", "openai"]), help="Stage 3 TTS provider (default: config TTS_PROVIDER=supertonic, local & free).")
 @click.option("--force", is_flag=True, help="Overwrite existing outputs.")
 @click.option("--dry-run", is_flag=True, help="Print what would happen, make no API calls.")
-@click.option("--no-atlas", is_flag=True, help="Skip Atlas character Bible references.")
+@click.option("--no-characters", "no_characters", is_flag=True, help="Skip all character bible references (pure text-to-image slides).")
 @click.option("--no-tts", is_flag=True, help="Stage 3: skip TTS and assemble from existing audio (no API cost).")
-def episode_run(episode_number, stages, lang, overlay, scene, quality, size, image_provider, speed, tts_provider, force, dry_run, no_atlas, no_tts):
+def episode_run(episode_number, stages, lang, overlay, scene, quality, size, image_provider, speed, tts_provider, force, dry_run, no_characters, no_tts):
     """Run pipeline stages for EPISODE_NUMBER."""
     from .curriculum import get_episode
     from .stage1_script import build_script
@@ -95,7 +159,7 @@ def episode_run(episode_number, stages, lang, overlay, scene, quality, size, ima
         if not script:
             console.print("[yellow]No script data — skipping stage 2[/yellow]")
         else:
-            image_prompts = build_image_prompts(script, overlay_lang=lang, size=size, quality=quality, dry_run=dry_run)
+            image_prompts = build_image_prompts(script, overlay_lang=lang, size=size, quality=quality, dry_run=dry_run, no_characters=no_characters)
             if not dry_run:
                 save_json(image_prompts, image_prompts_path)
             generate_images(image_prompts, ep_dir, scene_filter=scene, force=force, dry_run=dry_run, provider=image_provider)

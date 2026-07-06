@@ -19,7 +19,11 @@ def local_calls(monkeypatch):
     monkeypatch.setattr(stage2_images.image_local, "synthesize_image", fake_synth)
     monkeypatch.setattr(stage2_images, "log_api_call", lambda *a, **k: calls.append(("log", k)))
     # Atlas frame A should condition on these "bible" reference paths.
-    monkeypatch.setattr(stage2_images, "get_bible_paths", lambda pose: [Path("/bible/neutral.png"), Path(f"/bible/{pose}.png")])
+    monkeypatch.setattr(
+        stage2_images,
+        "get_bible_paths",
+        lambda character, pose: [Path("/bible/neutral.png"), Path(f"/bible/{pose}.png")],
+    )
     # If openai were touched, fail loudly.
     class _Boom:
         def __getattr__(self, _):

@@ -27,7 +27,7 @@ FIRST-TIME SETUP
    cache. Set SUPERTONIC_MODEL_DIR in .env to relocate them.
 
 3. Generate the Atlas character Bible (one-time, ~$3):
-     uv run atlas bible generate
+     uv run atlas character generate atlas
 
    This copies plan_files/atlas_neutral.png into atlas/bible/ and uses
    it as a reference to generate 5 expression variants (thinking, working,
@@ -37,9 +37,49 @@ FIRST-TIME SETUP
      atlas/bible/quality_check.png
 
    If it looks good, lock the Bible so it won't be accidentally regenerated:
-     uv run atlas bible lock
+     uv run atlas character lock atlas
 
    You only ever run this once. All episodes share these same reference images.
+   (`atlas character list` shows every registered character and its status. The
+   older `atlas bible generate` / `atlas bible lock` still work as aliases for
+   Atlas. To add your OWN character, see "ADDING A NEW CHARACTER" below.)
+
+
+ADDING A NEW CHARACTER
+----------------------
+
+Characters are a registry: Atlas is one entry; you can add more that stay just as
+on-model, and even share a scene with Atlas. To add one (call it e.g. "byte"):
+
+1. Draw/curate a NEUTRAL seed image — one clean pixel-art PNG, ~1024x1024,
+   transparent background — and save it as:
+     plan_files/byte_neutral.png
+
+2. Register the character in src/atlas_pipeline/characters.py. The registry has a
+   Character dataclass and a make_expression_prompts() helper, so a new character is
+   just: an id + display name, a `shared_block` description, a compact `blurb` (and a
+   one-line `tagline` for the script writer), and 5 short pose "deltas" (thinking,
+   working, error, happy, pointing) expanded by make_expression_prompts(). Then call
+   register(...) — the bootstrap in characters.py imports Atlas today; add your
+   module the same way. (See the ATLAS entry in atlas_bible.py as the worked example.)
+
+3. Generate and review its pose Bible from the seed, then lock it:
+     uv run atlas character generate byte
+     # review characters/byte/quality_check.png
+     uv run atlas character lock byte
+     uv run atlas character list          # confirm it shows generated + locked
+
+4. Use it. Stage 1 automatically lists every registered character to the script
+   writer, so new scripts can place "byte" (alone or WITH Atlas) in a scene's
+   `characters` array. You can also hand-edit script.json, e.g.:
+     "characters": [{"name":"atlas","pose":"pointing"},{"name":"byte","pose":"happy"}]
+
+5. Run stage 2 as usual — each scene is conditioned on every present character's
+   locked Bible, so two characters render together and stay on-model:
+     uv run atlas episode run 11 --stages 2
+
+(Prefer FLUX/gpt-image fidelity tips? Two characters in one image is the hardest
+case; keep each character's role in visual_intent explicit and distinct.)
 
 
 ADDING EPISODES
@@ -131,11 +171,11 @@ Replace 11 with your episode number.
   from reading as a glitch. BOTH frames are used — stage 3 alternates between them
   (~2 fps). They are NOT competing candidates to pick between.
 
-  Every image is a cozy 16-bit pixel-art slide. Scenes the script marked
-  atlas_in_scene=true include the Atlas mascot (rendered from the locked
-  Bible references using the scene's atlas_pose); other scenes are pure
-  pixel-art explainers with no character. The short on_screen_text headline
-  is rendered directly INTO the image.
+  Every image is a cozy 16-bit pixel-art slide. Scenes whose script lists one or
+  more characters render them (from each character's locked Bible using the
+  scene's chosen pose); two characters can appear together in one scene. Scenes
+  with an empty cast are pure pixel-art explainers with no character. The short
+  on_screen_text headline is rendered directly INTO the image.
 
   Image size and quality (lower = faster and cheaper while iterating):
     --quality low|medium|high|auto   default: high
@@ -286,10 +326,11 @@ scenes[] — each entry is ONE visual on screen:
   on_screen_text.en short headline (<=7 words) baked INTO the image
   on_screen_text.ko Korean headline baked into the image
   on_screen_text.position   center | upper-third | lower-third
-  atlas_in_scene    true  -> the Atlas mascot is drawn into this scene
-                    false -> pure pixel-art explainer, no character
-  atlas_pose        when atlas_in_scene is true: neutral | thinking |
-                    working | error | happy | pointing  (null otherwise)
+  characters        the cast in this scene: a list of {name, pose}, e.g.
+                    [{"name":"atlas","pose":"happy"}]. Empty [] -> pure pixel-art
+                    explainer, no character. 0, 1, or 2 characters (they may
+                    interact). Atlas poses: neutral | thinking | working | error |
+                    happy | pointing. (Legacy atlas_in_scene/atlas_pose still work.)
   visual_intent     plain-language description of the scene; this is what the
                     stage-2 image prompt is built from
 
@@ -297,7 +338,7 @@ What feeds what:
   - narration   -> what you HEAR (TTS) and what shows as captions (stage 3)
   - on_screen_text -> what you SEE printed inside the slide image (stage 2);
                    independent of the caption language
-  - atlas_in_scene / atlas_pose -> whether the mascot appears, and its pose
+  - characters  -> which cast members appear in the scene, and their poses
   - visual_intent -> the scene illustration in the stage-2 image
 
 To tweak wording or visuals, edit the relevant field and re-run stage 2
@@ -330,6 +371,7 @@ FILE STRUCTURE
   .env                            API keys
   episodes_yaml/episode_NN.yaml  Episode input data (one file per episode)
   atlas/bible/                   Atlas character reference images (locked)
+  characters/<id>/               Added characters' bible images (locked)
   models/supertonic/             Local TTS model files (downloaded once; gitignored)
   episodes/
     c03_e11_token/

@@ -8,7 +8,8 @@ from pathlib import Path
 from PIL import Image
 from rich.console import Console
 
-from .config import ATLAS_BIBLE_DIR, PLAN_FILES_DIR, IMAGE_MODEL, image_client
+from .config import ATLAS_BIBLE_DIR, ATLAS_CHARACTER_BLURB, PLAN_FILES_DIR, IMAGE_MODEL, image_client
+from .characters import Character, get_bible_paths, register
 
 console = Console()
 
@@ -312,41 +313,72 @@ Quality: high.""",
 
 EXPRESSION_ORDER = ["neutral", "thinking", "working", "error", "happy", "pointing"]
 
+# Atlas as a registry Character. Its long prompt text (above) stays here — the
+# canonical Atlas definition — and is registered into the shared character registry.
+ATLAS = Character(
+    id="atlas",
+    display_name="Atlas",
+    seed_path=PLAN_FILES_DIR / "atlas_neutral.png",
+    bible_dir=ATLAS_BIBLE_DIR,
+    shared_block=_SHARED_CHARACTER_BLOCK,
+    blurb=ATLAS_CHARACTER_BLURB,
+    expression_prompts=_EXPRESSION_PROMPTS,
+    poses=EXPRESSION_ORDER,
+    tagline=(
+        "the series mascot, a small floating pixel-art robot with a retro CRT-monitor "
+        "head (cream bezel, charcoal screen, soft-green pixel face), a capsule body, two "
+        "short mitten arms, no legs, no mouth; shows emotion via its screen face and pose"
+    ),
+)
+register(ATLAS)
 
-def _bible_locked() -> bool:
-    return (ATLAS_BIBLE_DIR / "locked.txt").exists()
+
+def _bible_locked(character: Character) -> bool:
+    return character.is_locked()
 
 
-def generate_bible(force: bool = False, dry_run: bool = False) -> None:
-    if _bible_locked() and not force:
-        console.print("[yellow]Atlas Bible is locked. Use --force to regenerate.[/yellow]")
+def generate_bible(
+    character: Character | None = None, force: bool = False, dry_run: bool = False
+) -> None:
+    character = character or ATLAS
+    if _bible_locked(character) and not force:
+        console.print(
+            f"[yellow]{character.display_name} Bible is locked. Use --force to regenerate.[/yellow]"
+        )
         return
 
-    ATLAS_BIBLE_DIR.mkdir(parents=True, exist_ok=True)
+    character.bible_dir.mkdir(parents=True, exist_ok=True)
 
-    neutral_src = PLAN_FILES_DIR / "atlas_neutral.png"
-    neutral_dst = ATLAS_BIBLE_DIR / "atlas_neutral.png"
+    neutral_src = character.seed_path
+    neutral_dst = character.neutral_path
+
+    if not neutral_src.exists():
+        console.print(
+            f"[red]Seed image not found: {neutral_src}. "
+            f"Provide a neutral {character.display_name} PNG there first.[/red]"
+        )
+        return
 
     if dry_run:
         console.print(f"[dim]DRY RUN: Would copy {neutral_src} → {neutral_dst}[/dim]")
-        for name in EXPRESSION_ORDER[1:]:
-            console.print(f"[dim]DRY RUN: Would generate atlas_{name}.png via images.edit()[/dim]")
+        for name in character.poses[1:]:
+            console.print(f"[dim]DRY RUN: Would generate {character.id}_{name}.png via images.edit()[/dim]")
         return
 
-    # Step 1: copy the existing neutral reference
+    # Step 1: copy the neutral seed into the bible
     console.print(f"Copying neutral reference: {neutral_src.name}")
     shutil.copy2(neutral_src, neutral_dst)
-    console.print(f"[green]✓[/green] atlas_neutral.png")
+    console.print(f"[green]✓[/green] {neutral_dst.name}")
 
-    # Step 2: generate remaining 5 expressions via images.edit()
-    for name in EXPRESSION_ORDER[1:]:
-        dst = ATLAS_BIBLE_DIR / f"atlas_{name}.png"
+    # Step 2: generate the remaining expressions via images.edit()
+    for name in character.poses[1:]:
+        dst = character.pose_path(name)
         if dst.exists() and not force:
-            console.print(f"[dim]Skipping atlas_{name}.png (already exists)[/dim]")
+            console.print(f"[dim]Skipping {dst.name} (already exists)[/dim]")
             continue
 
-        prompt = _EXPRESSION_PROMPTS[name]
-        console.print(f"Generating atlas_{name}.png ...")
+        prompt = character.expression_prompts[name]
+        console.print(f"Generating {dst.name} ...")
 
         with open(neutral_dst, "rb") as ref:
             result = image_client.images.edit(
@@ -359,24 +391,29 @@ def generate_bible(force: bool = False, dry_run: bool = False) -> None:
 
         image_bytes = base64.b64decode(result.data[0].b64_json)
         dst.write_bytes(image_bytes)
-        console.print(f"[green]✓[/green] atlas_{name}.png")
+        console.print(f"[green]✓[/green] {dst.name}")
 
-    _make_quality_check()
-    console.print("\n[bold green]Bible generation complete.[/bold green]")
-    console.print("Review atlas/bible/quality_check.png, then run: atlas bible lock")
-
-
-def lock_bible() -> None:
-    if not (ATLAS_BIBLE_DIR / "atlas_neutral.png").exists():
-        raise RuntimeError("Run 'atlas bible generate' before locking.")
-    (ATLAS_BIBLE_DIR / "locked.txt").write_text("locked\n")
-    console.print("[green]Atlas Bible locked.[/green]")
+    _make_quality_check(character)
+    console.print(f"\n[bold green]{character.display_name} Bible generation complete.[/bold green]")
+    console.print(
+        f"Review {character.bible_dir}/quality_check.png, then run: atlas character lock {character.id}"
+    )
 
 
-def _make_quality_check() -> None:
+def lock_bible(character: Character | None = None) -> None:
+    character = character or ATLAS
+    if not character.neutral_path.exists():
+        raise RuntimeError(
+            f"Run 'atlas character generate {character.id}' before locking."
+        )
+    (character.bible_dir / "locked.txt").write_text("locked\n")
+    console.print(f"[green]{character.display_name} Bible locked.[/green]")
+
+
+def _make_quality_check(character: Character) -> None:
     images = []
-    for name in EXPRESSION_ORDER:
-        p = ATLAS_BIBLE_DIR / f"atlas_{name}.png"
+    for name in character.poses:
+        p = character.neutral_path if name == "neutral" else character.pose_path(name)
         if p.exists():
             images.append(Image.open(p).convert("RGBA"))
 
@@ -390,15 +427,9 @@ def _make_quality_check() -> None:
         img.thumbnail((thumb_size, thumb_size), Image.LANCZOS)
         canvas.paste(img, (i * thumb_size, 0), img)
 
-    canvas.save(ATLAS_BIBLE_DIR / "quality_check.png")
+    canvas.save(character.bible_dir / "quality_check.png")
     console.print("[green]✓[/green] quality_check.png")
 
 
-def get_bible_paths(pose: str) -> list[Path]:
-    """Return paths to bible images needed for a given pose."""
-    paths = [ATLAS_BIBLE_DIR / "atlas_neutral.png"]
-    if pose != "neutral":
-        expr_path = ATLAS_BIBLE_DIR / f"atlas_{pose}.png"
-        if expr_path.exists():
-            paths.append(expr_path)
-    return [p for p in paths if p.exists()]
+# get_bible_paths is defined in characters.py and re-exported here for back-compat.
+__all__ = ["ATLAS", "EXPRESSION_ORDER", "generate_bible", "lock_bible", "get_bible_paths"]

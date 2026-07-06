@@ -57,7 +57,7 @@ def log_api_call(
 
 
 def validate_script(script: dict) -> list[str]:
-    from .atlas_bible import EXPRESSION_ORDER
+    from .characters import get_character
 
     errors: list[str] = []
     meta = script.get("meta", {})
@@ -80,12 +80,27 @@ def validate_script(script: dict) -> list[str]:
             errors.append(f"{sid}: missing narration.en")
         if not narration.get("ko"):
             errors.append(f"{sid}: missing narration.ko")
-        if s.get("atlas_in_scene"):
+        # New multi-character schema: scenes[].characters = [{name, pose}, ...]
+        entries = s.get("characters")
+        if entries:
+            for e in entries:
+                name = e.get("name")
+                char = get_character(name)
+                if char is None:
+                    errors.append(f"{sid}: unknown character {name!r}")
+                elif e.get("pose") not in char.poses:
+                    errors.append(
+                        f"{sid}: character {name!r} pose {e.get('pose')!r} "
+                        f"is missing or not one of {char.poses}"
+                    )
+        # Legacy schema: atlas_in_scene / atlas_pose
+        elif s.get("atlas_in_scene"):
+            atlas = get_character("atlas")
             pose = s.get("atlas_pose")
-            if pose not in EXPRESSION_ORDER:
+            if atlas is not None and pose not in atlas.poses:
                 errors.append(
                     f"{sid}: atlas_in_scene is true but atlas_pose={pose!r} "
-                    f"is missing or not one of {EXPRESSION_ORDER}"
+                    f"is missing or not one of {atlas.poses}"
                 )
 
     return errors

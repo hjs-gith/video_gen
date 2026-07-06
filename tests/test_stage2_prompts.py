@@ -49,8 +49,8 @@ def test_variation_suffix_used_only_for_frame_b():
 
 
 def test_variation_motion_is_scene_specific():
-    # Atlas scenes get an on-model Atlas idle; other scenes move only the accent element.
+    # Atlas scenes get an on-model Atlas idle; other scenes move only the focal element.
     atlas = stage2_images._variation_motion({"atlas_in_scene": True})
     plain = stage2_images._variation_motion({"atlas_in_scene": False})
-    assert "Atlas" in atlas and "blink" in atlas.lower()
-    assert "Atlas" not in plain and "accent" in plain.lower()
+    assert "Atlas" in atlas and "tilt" in atlas.lower()
+    assert "Atlas" not in plain and "tilt" in plain.lower()
