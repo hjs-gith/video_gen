@@ -71,9 +71,11 @@ Top level: `{ "meta": {...}, "scenes": [...], "quality_checks": {...} }`.
   audio length wins downstream, so keep them roughly coherent but don't obsess.
 - `narration`: `{ "en": "...", "ko": "..." }` (spoken; also the caption text)
 - `on_screen_text`: `{ "en": "≤7 words", "ko": "...", "position": "center | upper-third | lower-third" }`
-- `atlas_in_scene`: boolean
-- `atlas_pose`: one of `neutral | thinking | working | error | happy | pointing`
-  when `atlas_in_scene` is true; `null` otherwise
+- `characters`: array of the cast members in this scene, each
+  `{ "name": "<character id>", "pose": "<pose>" }`; `[]` when the scene has no
+  characters. 0, 1, or 2 characters may appear (two may interact). For Atlas the
+  poses are `neutral | thinking | working | error | happy | pointing`.
+  (Legacy `atlas_in_scene`/`atlas_pose` are still accepted but prefer `characters`.)
 - `visual_intent`: 1–3 plain-language sentences describing what to show
 
 `quality_checks`: booleans you self-assess (`word_count_within_tolerance`,
@@ -106,21 +108,23 @@ words per card; each needs ≥2s on screen.
 **visual_intent**: describe subjects, action, composition, mood in plain language an
 artist could draw. Say what is SHOWN, not how to prompt an image model.
 
-**Atlas (the mascot)**: a small floating pixel-art robot with a CRT-monitor head; it
-emotes through its screen face and pose. Six poses: `neutral, thinking, working,
-error, happy, pointing`. Decide **per scene** whether Atlas appears:
-- Needs an actor (someone reacting, demonstrating, driving the metaphor) →
-  `atlas_in_scene: true`, with Atlas as the integrated participant (never a human
-  stand-in). Pick the pose that fits the moment.
-- Pure explanation (a diagram, text breaking into tiles, a chart) → `atlas_in_scene:
-  false`, `atlas_pose: null`, show only the explanatory pixel-art.
+**Cast**: recurring on-model characters. Atlas (the mascot) is a small floating
+pixel-art robot with a CRT-monitor head that emotes through its screen face and pose;
+poses `neutral, thinking, working, error, happy, pointing`. Other registered
+characters have their own poses (see `uv run atlas character list`). Decide **per
+scene** which cast members appear (0, 1, or 2):
+- Needs an actor (someone reacting, demonstrating, driving the metaphor) → add one or
+  two cast members to `characters` as integrated participants (never a human
+  stand-in). Two characters may appear together and interact. Pick each one's pose.
+- Pure explanation (a diagram, text breaking into tiles, a chart) → `characters: []`,
+  show only the explanatory pixel-art.
 
 ## 5. What each field feeds
 
 - `narration` → what you HEAR (TTS) and the on-screen captions.
 - `on_screen_text` → the short headline baked INTO the slide image (stage 2);
   independent of the caption language.
-- `atlas_in_scene` / `atlas_pose` → whether the mascot appears and how.
+- `characters` → which cast members appear in the scene and their poses.
 - `visual_intent` → the scene illustration (stage 2 builds the image prompt from it).
 
 ## 6. Validate
@@ -132,8 +136,8 @@ uv run python -c "import json,sys; from atlas_pipeline.utils import validate_scr
 ```
 
 It flags: no scenes, `actual_length_sec` outside 30–90, missing `visual_intent`,
-missing `narration.en`/`.ko`, and an invalid/missing `atlas_pose` when
-`atlas_in_scene` is true. Also check by hand: `scene_id`s sequential from S01;
+missing `narration.en`/`.ko`, an unknown character `name`, and an invalid pose for a
+scene's character. Also check by hand: `scene_id`s sequential from S01;
 `meta.scene_count` matches the array; recompute `actual_length_sec`,
 `english_word_count`, and `korean_syllable_count` after edits.
 

@@ -24,7 +24,9 @@ def fake_client(monkeypatch, fake_image_result):
 
     monkeypatch.setattr(stage2_images, "image_client", _Client())
     # Avoid touching the real Atlas bible PNGs.
-    monkeypatch.setattr(stage2_images, "get_bible_paths", lambda pose: [])
+    monkeypatch.setattr(
+        stage2_images, "reference_plan", lambda present: [(c, p, []) for c, p in present]
+    )
     monkeypatch.setattr(stage2_images, "log_api_call", lambda *a, **k: None)
     return calls
 

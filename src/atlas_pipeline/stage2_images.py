@@ -7,7 +7,11 @@ from pathlib import Path
 from rich.console import Console
 
 from . import image_local
-from .atlas_bible import get_bible_paths
+from .characters import (
+    get_character,
+    reference_plan,
+    scene_characters,
+)
 from .config import (
     ATLAS_BEATS,
     ATLAS_CHARACTER_BLURB,
@@ -35,8 +39,16 @@ _CONSTRAINTS = """\
 - {character_rule}
 - No gradient backgrounds, no drop shadows except a faint contact shadow"""
 
-_CHARACTER_RULE_ATLAS = "Atlas is the only character; no realistic humans, no photographic faces"
 _CHARACTER_RULE_NONE = "No characters; show only the pixel-art props, icons, and text described"
+
+
+def _character_rule(present: list) -> str:
+    """The constraint line naming which character(s) may appear."""
+    if not present:
+        return _CHARACTER_RULE_NONE
+    names = ", ".join(char.display_name for char, _ in present)
+    verb = "is" if len(present) == 1 else "are"
+    return f"{names} {verb} the only character(s); no realistic humans, no photographic faces"
 
 _RENDERING_SPEC = "Quality: high. Format: 16:9 educational slide ready for video voiceover."
 
@@ -59,37 +71,92 @@ _VARIATION_SUFFIX = (
 )
 
 
+_ATLAS_MOTION = (
+    "Atlas does a tiny idle float: its whole body drifts up by about 2 pixels "
+    "and tilts very slightly (about 2–3 degrees), as if gently bobbing in place "
+    "(the charcoal contact-shadow disc beneath shrinks a touch to match the lift). "
+    "Its soft-green pixel face stays EXACTLY the same — same eyes, same screen "
+    "expression, same emotion; do NOT blink, do NOT narrow or reshape the eyes, "
+    "do NOT change the face at all. Atlas stays perfectly on-model; nothing else "
+    "in the scene moves."
+)
+_CHARACTER_MOTION = (
+    "The character(s) do a tiny idle float: each drifts up by about 2 pixels and "
+    "tilts very slightly (about 2–3 degrees), as if gently bobbing in place. Their "
+    "faces, expressions, colors, and outlines stay EXACTLY the same — only position "
+    "and tilt change, and each stays perfectly on-model. Nothing else moves."
+)
+_FOCAL_MOTION = (
+    "The single main focal element does a tiny idle float: it drifts by 1–2 pixels "
+    "and tilts very slightly (about 2–3 degrees), as if gently bobbing in place. "
+    "Its shape, colors, and any face or expression stay EXACTLY the same — only its "
+    "position and tilt change. Every other prop, icon, text, and pixel stays exactly "
+    "as in frame 1."
+)
+
+
 def _variation_motion(scene: dict) -> str:
     """The single small motion frame B is allowed, chosen to suit the scene.
 
     Naming one concrete element (and forbidding all others) is what keeps the loop
     from reading as a glitch — like the second cel of a hand-drawn idle animation.
     """
-    if scene.get("atlas_in_scene"):
-        return (
-            "Atlas does a tiny idle float: its whole body drifts up by about 2 pixels "
-            "and tilts very slightly (about 2–3 degrees), as if gently bobbing in place "
-            "(the charcoal contact-shadow disc beneath shrinks a touch to match the lift). "
-            "Its soft-green pixel face stays EXACTLY the same — same eyes, same screen "
-            "expression, same emotion; do NOT blink, do NOT narrow or reshape the eyes, "
-            "do NOT change the face at all. Atlas stays perfectly on-model; nothing else "
-            "in the scene moves."
-        )
+    present = scene_characters(scene)
+    ids = {char.id for char, _ in present}
+    if not present:
+        return _FOCAL_MOTION
+    if ids == {"atlas"}:
+        return _ATLAS_MOTION
+    return _CHARACTER_MOTION
+
+
+def _reference_map(present: list) -> str:
+    """Tell the model which reference image belongs to which character.
+
+    The API takes reference images as a flat, unlabeled list. Without this map, a
+    two-character scene hands the model two anonymous images plus two free-floating pose
+    words, and it pools them — which is how Atlas's pointing ARM ended up on Byte as a
+    fifth leg. Numbering comes from `reference_plan`, the same call that builds the list
+    actually sent, so the numbers always line up.
+    """
+    lines, n = [], 0
+    for char, pose, refs in reference_plan(present):
+        for path in refs:
+            n += 1
+            which = "neutral base" if path.stem.endswith("_neutral") else f'"{pose}" pose'
+            lines.append(
+                f"- Reference image {n} = {char.display_name.upper()}, showing its {which}."
+            )
+    if not lines:
+        return "No reference images are provided; draw the character(s) from the descriptions above."
+
+    names = " and ".join(c.display_name for c, _ in present)
     return (
-        "The single main focal element does a tiny idle float: it drifts by 1–2 pixels "
-        "and tilts very slightly (about 2–3 degrees), as if gently bobbing in place. "
-        "Its shape, colors, and any face or expression stay EXACTLY the same — only its "
-        "position and tilt change. Every other prop, icon, text, and pixel stays exactly "
-        "as in frame 1."
+        "REFERENCE IMAGES — each one belongs to exactly ONE character:\n"
+        + "\n".join(lines)
+        + f"\nUse each reference ONLY for the character it belongs to. NEVER copy a pose, "
+        f"limb, body part, or feature from one character's reference onto the other. "
+        f"{names} are separate characters and must never be blended into each other."
     )
+
+
+def _anatomy_block(present: list) -> str:
+    """Per-character body rules — the guard against limbs migrating across characters."""
+    lines = [
+        f"- {char.display_name}: {char.anatomy}"
+        for char, _ in present
+        if char.anatomy
+    ]
+    if not lines:
+        return ""
+    return "CHARACTER ANATOMY — never violate:\n" + "\n".join(lines)
 
 
 def _build_prompt(
     scene: dict,
     tier_hex: str,
     overlay_lang: str,
-    atlas_in_scene: bool,
-    pose: str,
+    present: list,
     size: str,
 ) -> str:
     style = SERIES_STYLE_BLOCK.format(tier_hex=tier_hex)
@@ -102,17 +169,45 @@ def _build_prompt(
     content = f'Headline (verbatim, exact spelling): "{text}"\nVisual element: {visual_intent}'
 
     parts = [_DELIVERABLE, style]
-    if atlas_in_scene:
-        parts.append(ATLAS_CHARACTER_BLURB)
+    for char, pose in present:
+        parts.append(char.blurb)
         parts.append(
-            f"Atlas appears in this scene with a {pose} pose, integrated into the "
-            "action described below; match Atlas to the reference image(s) provided."
+            f"{char.display_name} appears in this scene: {char.pose_brief(pose)}. "
+            f"Integrate {char.display_name} into the action described below."
         )
-    character_rule = _CHARACTER_RULE_ATLAS if atlas_in_scene else _CHARACTER_RULE_NONE
-    constraints = _CONSTRAINTS.format(tier_hex=tier_hex, character_rule=character_rule)
+    if present:
+        parts.append(_reference_map(present))
+        parts.extend(b for b in [_anatomy_block(present)] if b)
+    constraints = _CONSTRAINTS.format(tier_hex=tier_hex, character_rule=_character_rule(present))
 
     parts.extend([layout, content, constraints, _RENDERING_SPEC])
     return "\n\n".join(parts)
+
+
+def _resolve_characters(scene: dict) -> list:
+    """Resolve the characters in a source (stage-1) scene -> [(Character, pose)].
+
+    Honors the explicit `characters` array, then legacy `atlas_in_scene`/`atlas_pose`,
+    then infers Atlas from the beat/visual_intent for older scripts with neither field.
+    """
+    beat = scene.get("beat", "")
+    entries = scene.get("characters")
+    if entries:
+        out = []
+        for e in entries:
+            char = get_character(e.get("name", ""))
+            if char is not None:
+                out.append((char, e.get("pose") or BEAT_TO_POSE.get(beat, "neutral")))
+        return out
+
+    atlas_in = scene.get("atlas_in_scene")
+    if atlas_in is None:  # legacy inference for scripts lacking any character field
+        atlas_in = beat in ATLAS_BEATS or "atlas" in scene.get("visual_intent", "").lower()
+    if atlas_in:
+        atlas = get_character("atlas")
+        pose = scene.get("atlas_pose") or BEAT_TO_POSE.get(beat, "neutral")
+        return [(atlas, pose)] if atlas is not None else []
+    return []
 
 
 def build_image_prompts(
@@ -121,6 +216,7 @@ def build_image_prompts(
     size: str | None = None,
     quality: str | None = None,
     dry_run: bool = False,
+    no_characters: bool = False,
 ) -> dict:
     size = size or IMAGE_SIZE
     quality = quality or IMAGE_QUALITY
@@ -131,17 +227,16 @@ def build_image_prompts(
     scenes_out = []
     for scene in script.get("scenes", []):
         beat = scene.get("beat", "")
-        pose = scene.get("atlas_pose") or BEAT_TO_POSE.get(beat, "neutral")
-        atlas_in_scene = scene.get("atlas_in_scene")
-        if atlas_in_scene is None:
-            atlas_in_scene = beat in ATLAS_BEATS or "atlas" in scene.get("visual_intent", "").lower()
+        present = [] if no_characters else _resolve_characters(scene)  # [(Character, pose), ...]
 
-        prompt = _build_prompt(scene, tier_hex, overlay_lang, atlas_in_scene, pose, size)
+        prompt = _build_prompt(scene, tier_hex, overlay_lang, present, size)
         scenes_out.append({
             "scene_id": scene["scene_id"],
             "beat": beat,
-            "pose_hint": pose,
-            "atlas_in_scene": atlas_in_scene,
+            "characters": [{"name": char.id, "pose": pose} for char, pose in present],
+            # Back-compat fields (single-character era):
+            "pose_hint": present[0][1] if present else "neutral",
+            "atlas_in_scene": any(char.id == "atlas" for char, _ in present),
             "visual_intent_source": scene.get("visual_intent", ""),
             "on_screen_text_used": scene.get("on_screen_text", {}).get(overlay_lang, ""),
             "image_prompt": prompt,
@@ -163,7 +258,8 @@ def build_image_prompts(
 
     if dry_run:
         for s in scenes_out:
-            console.print(f"\n[bold]{s['scene_id']}[/bold] ({s['beat']}, pose={s['pose_hint']}, atlas={s['atlas_in_scene']})")
+            cast = ", ".join(f"{c['name']}:{c['pose']}" for c in s["characters"]) or "none"
+            console.print(f"\n[bold]{s['scene_id']}[/bold] ({s['beat']}, cast={cast})")
             console.print(s["image_prompt"][:400] + "...")
         return result
 
@@ -259,18 +355,24 @@ def _render(
 def _generate_frame_a(
     scene: dict, out_path: Path, episode_id: str, size: str, quality: str, provider: str
 ) -> None:
-    """Generate the base frame: condition on Atlas bible when in-scene, else text-to-image."""
+    """Generate the base frame, conditioning on every present character's bible.
+
+    The reference list comes from `reference_plan` — the same call the prompt's
+    "reference image N = X" map is numbered from, so the images the model receives and
+    the labels it is given are always in the same order.
+    """
     prompt = scene["image_prompt"]
     sid = scene["scene_id"]
-    atlas_in = scene.get("atlas_in_scene", False)
-    pose = scene.get("pose_hint", "neutral")
+    present = scene_characters(scene)
 
     reference_paths: list[Path] = []
-    if atlas_in:
-        reference_paths = get_bible_paths(pose)
-        if not reference_paths:
-            console.print(f"[yellow]No bible images found for pose '{pose}' — falling back to text-to-image[/yellow]")
-            atlas_in = False
+    for char, pose, refs in reference_plan(present):
+        if not refs:
+            console.print(
+                f"[yellow]No bible images for {char.id} pose '{pose}' — "
+                f"{char.display_name} will be drawn from its description only[/yellow]"
+            )
+        reference_paths.extend(refs)
 
     _render(provider, prompt, size, quality, out_path, reference_paths)
 
@@ -279,10 +381,14 @@ def _generate_frame_a(
         model=IMAGE_LOCAL_MODEL if provider == "local" else IMAGE_MODEL,
         tokens_in=0,
         tokens_out=0,
-        cost_usd=0.0 if provider == "local" else (0.12 if atlas_in else 0.10),
+        cost_usd=0.0 if provider == "local" else (0.12 if present else 0.10),
         episode_id=episode_id,
         scene_id=sid,
-        extra={"atlas_in_scene": atlas_in, "pose": pose, "frame": "a", "provider": provider},
+        extra={
+            "characters": [{"name": c.id, "pose": p} for c, p in present],
+            "frame": "a",
+            "provider": provider,
+        },
     )
     console.print(f"[green]✓[/green] {out_path.name}")
 

@@ -78,28 +78,27 @@ ON-SCREEN TEXT:
 - Max 7 words per card
 - Each card needs ≥2 sec on screen
 
-ATLAS CHARACTER & WORLD:
-- The series has a mascot named Atlas: a small floating pixel-art robot with a
-  rounded retro CRT-monitor head (cream bezel, charcoal screen, soft-green pixel
-  face), a capsule body, two short mitten arms, no legs, no mouth. Atlas shows
-  emotion through its screen face and arm/body pose.
+CAST & WORLD:
 - Every scene lives in a cozy 16-bit pixel-art world (warm retro-game explainer).
-- Atlas has six expression poses: neutral, thinking, working, error, happy,
-  pointing. Pick the one that best fits the scene's mood/action.
-- DECIDE PER SCENE whether Atlas appears:
+- The recurring cast (keep each strictly on-model, using its exact "name"):
+{cast_block}
+- DECIDE PER SCENE which cast members appear (0, 1, or 2):
   - If the scene needs a character or actor (someone reacting, demonstrating,
-    driving the metaphor), put Atlas in it as an INTEGRATED participant — Atlas
-    drives the taxi, points at the breaking tiles, cheers at the result, etc.
-    NEVER use a human/office-worker stand-in; Atlas plays that role instead.
+    driving the metaphor), put one or two cast members in it as INTEGRATED
+    participants — they drive the taxi, point at the breaking tiles, cheer at the
+    result, etc. Two characters may appear together and interact in one scene.
+    NEVER use a human/office-worker stand-in; a cast member plays that role.
   - If the scene is pure explanation (a diagram, text breaking into tiles, a
-    chart, a labeled container) and no actor is needed, leave Atlas out and show
+    chart, a labeled container) and no actor is needed, use NO characters and show
     only the explanatory pixel-art elements.
+- Record the chosen cast in each scene's "characters" array: one {{name, pose}}
+  entry per character present, or [] when the scene has no characters.
 
 VISUAL INTENT (the key field):
 - Describe the scene in plain language an artist could draw
 - Include: subjects, action, composition, mood
-- When Atlas is in the scene, write Atlas directly into the description as a
-  participant in the action (and reflect its pose). When Atlas is absent,
+- When a cast member is in the scene, write it directly into the description as a
+  participant in the action (and reflect its pose). When none are present,
   describe only the explanatory pixel-art elements — no characters.
 - Write what should be SHOWN, not how to prompt an image AI
 - 1–3 sentences per scene, concrete and visualizable
@@ -143,8 +142,9 @@ OUTPUT SCHEMA
         "ko": "≤7 단어, 키워드 강조용",
         "position": "center | upper-third | lower-third"
       }},
-      "atlas_in_scene": true,
-      "atlas_pose": "neutral | thinking | working | error | happy | pointing (REQUIRED when atlas_in_scene is true; omit or null otherwise)",
+      "characters": [
+        {{ "name": "atlas", "pose": "neutral | thinking | working | error | happy | pointing" }}
+      ],
       "visual_intent": "Plain-language description of what the scene should show. 1–3 sentences."
     }}
   ],
@@ -181,7 +181,10 @@ def build_script(
         console.print(f"[dim]script.json already exists — skipping (use --force to overwrite)[/dim]")
         return load_json(script_path)
 
+    from .characters import cast_block
+
     user_prompt = _USER_PROMPT_TEMPLATE.format(
+        cast_block=cast_block(),
         term=", ".join(episode.terms),
         tier=episode.tier_number,
         cluster_name=episode.cluster_name,
