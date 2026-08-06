@@ -21,8 +21,10 @@ def local_calls(monkeypatch):
     # Atlas frame A should condition on these "bible" reference paths.
     monkeypatch.setattr(
         stage2_images,
-        "get_bible_paths",
-        lambda character, pose: [Path("/bible/neutral.png"), Path(f"/bible/{pose}.png")],
+        "reference_plan",
+        lambda present: [
+            (c, p, [Path("/bible/neutral.png"), Path(f"/bible/{p}.png")]) for c, p in present
+        ],
     )
     # If openai were touched, fail loudly.
     class _Boom:

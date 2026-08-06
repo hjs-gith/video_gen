@@ -313,6 +313,44 @@ Quality: high.""",
 
 EXPRESSION_ORDER = ["neutral", "thinking", "working", "error", "happy", "pointing"]
 
+# One concrete line per pose, injected into stage-2 SCENE prompts. Atlas gestures with an
+# ARM and has no legs — saying so explicitly stops the gesture migrating onto a
+# four-legged castmate as an extra limb.
+ATLAS_POSE_BRIEFS = {
+    "neutral": (
+        "floating calmly, two soft-green square pixel eyes on its screen, arms relaxed "
+        "at its sides"
+    ),
+    "thinking": (
+        "leaning slightly forward and tilted, its screen showing a soft-green loading "
+        "spinner instead of eyes (no eyes at all)"
+    ),
+    "working": (
+        "leaning into a task, its screen showing a soft-green progress bar instead of "
+        "eyes (no eyes at all), one mitten arm reaching out as if operating something"
+    ),
+    "error": (
+        "recoiling in surprise, its screen showing a single large soft-green "
+        "exclamation mark instead of eyes (no eyes at all), arms flung outward"
+    ),
+    "happy": (
+        "bouncing upward, floating higher than usual, its screen showing two upward "
+        "soft-green arcs '^ ^' instead of square eyes, both mitten arms raised in a cheer"
+    ),
+    "pointing": (
+        "extending ONE short mitten ARM out toward the subject it is indicating, keeping "
+        "its normal two-eye screen face; Atlas points with an ARM — it has no legs and "
+        "no paws to point with"
+    ),
+}
+
+ATLAS_ANATOMY = (
+    "a floating robot — NO legs, NO feet, NO paws, NO fur, NO ears, NO tail, NO mouth. "
+    "It has exactly TWO short mitten arms, a CRT-monitor head, and a capsule body "
+    "hovering above a small contact-shadow disc. Atlas gestures with an ARM. Never give "
+    "Atlas an animal body part."
+)
+
 # Atlas as a registry Character. Its long prompt text (above) stays here — the
 # canonical Atlas definition — and is registered into the shared character registry.
 ATLAS = Character(
@@ -324,6 +362,8 @@ ATLAS = Character(
     blurb=ATLAS_CHARACTER_BLURB,
     expression_prompts=_EXPRESSION_PROMPTS,
     poses=EXPRESSION_ORDER,
+    pose_briefs=ATLAS_POSE_BRIEFS,
+    anatomy=ATLAS_ANATOMY,
     tagline=(
         "the series mascot, a small floating pixel-art robot with a retro CRT-monitor "
         "head (cream bezel, charcoal screen, soft-green pixel face), a capsule body, two "

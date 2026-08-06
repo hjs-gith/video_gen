@@ -8,9 +8,8 @@ from rich.console import Console
 
 from . import image_local
 from .characters import (
-    canonical_refs,
-    get_bible_paths,
     get_character,
+    reference_plan,
     scene_characters,
 )
 from .config import (
@@ -111,6 +110,48 @@ def _variation_motion(scene: dict) -> str:
     return _CHARACTER_MOTION
 
 
+def _reference_map(present: list) -> str:
+    """Tell the model which reference image belongs to which character.
+
+    The API takes reference images as a flat, unlabeled list. Without this map, a
+    two-character scene hands the model two anonymous images plus two free-floating pose
+    words, and it pools them — which is how Atlas's pointing ARM ended up on Byte as a
+    fifth leg. Numbering comes from `reference_plan`, the same call that builds the list
+    actually sent, so the numbers always line up.
+    """
+    lines, n = [], 0
+    for char, pose, refs in reference_plan(present):
+        for path in refs:
+            n += 1
+            which = "neutral base" if path.stem.endswith("_neutral") else f'"{pose}" pose'
+            lines.append(
+                f"- Reference image {n} = {char.display_name.upper()}, showing its {which}."
+            )
+    if not lines:
+        return "No reference images are provided; draw the character(s) from the descriptions above."
+
+    names = " and ".join(c.display_name for c, _ in present)
+    return (
+        "REFERENCE IMAGES — each one belongs to exactly ONE character:\n"
+        + "\n".join(lines)
+        + f"\nUse each reference ONLY for the character it belongs to. NEVER copy a pose, "
+        f"limb, body part, or feature from one character's reference onto the other. "
+        f"{names} are separate characters and must never be blended into each other."
+    )
+
+
+def _anatomy_block(present: list) -> str:
+    """Per-character body rules — the guard against limbs migrating across characters."""
+    lines = [
+        f"- {char.display_name}: {char.anatomy}"
+        for char, _ in present
+        if char.anatomy
+    ]
+    if not lines:
+        return ""
+    return "CHARACTER ANATOMY — never violate:\n" + "\n".join(lines)
+
+
 def _build_prompt(
     scene: dict,
     tier_hex: str,
@@ -131,10 +172,12 @@ def _build_prompt(
     for char, pose in present:
         parts.append(char.blurb)
         parts.append(
-            f"{char.display_name} appears in this scene with a {pose} pose, integrated "
-            f"into the action described below; match {char.display_name} to the "
-            "reference image(s) provided."
+            f"{char.display_name} appears in this scene: {char.pose_brief(pose)}. "
+            f"Integrate {char.display_name} into the action described below."
         )
+    if present:
+        parts.append(_reference_map(present))
+        parts.extend(b for b in [_anatomy_block(present)] if b)
     constraints = _CONSTRAINTS.format(tier_hex=tier_hex, character_rule=_character_rule(present))
 
     parts.extend([layout, content, constraints, _RENDERING_SPEC])
@@ -314,22 +357,22 @@ def _generate_frame_a(
 ) -> None:
     """Generate the base frame, conditioning on every present character's bible.
 
-    One character -> its neutral+pose references (as before). Two characters -> one
-    canonical reference each, to keep conditioning to ~one image per character.
+    The reference list comes from `reference_plan` — the same call the prompt's
+    "reference image N = X" map is numbered from, so the images the model receives and
+    the labels it is given are always in the same order.
     """
     prompt = scene["image_prompt"]
     sid = scene["scene_id"]
     present = scene_characters(scene)
 
     reference_paths: list[Path] = []
-    if len(present) == 1:
-        char, pose = present[0]
-        reference_paths = get_bible_paths(char, pose)
-        if not reference_paths:
-            console.print(f"[yellow]No bible images for {char.id} pose '{pose}' — falling back to text-to-image[/yellow]")
-    elif len(present) > 1:
-        for char, pose in present:
-            reference_paths.extend(canonical_refs(char, pose))
+    for char, pose, refs in reference_plan(present):
+        if not refs:
+            console.print(
+                f"[yellow]No bible images for {char.id} pose '{pose}' — "
+                f"{char.display_name} will be drawn from its description only[/yellow]"
+            )
+        reference_paths.extend(refs)
 
     _render(provider, prompt, size, quality, out_path, reference_paths)
 

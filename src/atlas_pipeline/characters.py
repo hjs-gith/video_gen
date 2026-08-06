@@ -16,7 +16,7 @@ those definition modules lazily so this module has no import cycle with them.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .config import ROOT
@@ -37,6 +37,16 @@ class Character:
     expression_prompts: dict   # pose -> full edit prompt (for poses[1:])
     poses: list                # ordered; poses[0] is the (copied) neutral base
     tagline: str = ""          # one-line description for the stage-1 CAST prompt
+    # pose -> one concrete sentence, injected into stage-2 SCENE prompts. Without this
+    # the scene prompt carries only the bare pose word ("pointing"), which has no owner
+    # and bleeds onto the other character in multi-character scenes.
+    pose_briefs: dict = field(default_factory=dict)
+    # Inviolable body rules, e.g. "exactly four legs — never a fifth limb". Stops limbs
+    # and features migrating between characters that share a scene.
+    anatomy: str = ""
+
+    def pose_brief(self, pose: str) -> str:
+        return self.pose_briefs.get(pose) or f"a {pose} pose"
 
     @property
     def neutral_path(self) -> Path:
@@ -69,6 +79,7 @@ def _bootstrap() -> None:
         return
     _BOOTSTRAPPED = True
     from . import atlas_bible  # noqa: F401  — registers Atlas
+    from . import character_byte  # noqa: F401  — registers Byte
     # To add a character: create its definition module and import it here so it
     # self-registers, e.g.  `from . import character_<id>  # noqa: F401`.
 
@@ -141,6 +152,22 @@ def canonical_refs(character: Character, pose: str) -> list[Path]:
     return [character.neutral_path] if character.neutral_path.exists() else []
 
 
+def reference_plan(
+    present: list[tuple[Character, str]]
+) -> list[tuple[Character, str, list[Path]]]:
+    """Ordered (character, pose, refs) — the single source of truth for which reference
+    images get sent, for whom, and in what order.
+
+    Stage 2 derives BOTH the API image list and the prompt's "reference image N = X"
+    map from this, so the two can never disagree. Characters whose bible files are
+    missing contribute no refs and are simply absent from the plan's numbering.
+    """
+    if len(present) == 1:
+        char, pose = present[0]
+        return [(char, pose, get_bible_paths(char, pose))]
+    return [(char, pose, canonical_refs(char, pose)) for char, pose in present]
+
+
 def default_seed_path(cid: str) -> Path:
     """Conventional seed location for a new character."""
     from .config import PLAN_FILES_DIR
@@ -182,11 +209,16 @@ def make_expression_prompts(
             f"{shared_block}\n\n"
             f"Expression / pose for this image:\n{delta}\n\n"
             f"Canvas: {canvas}, transparent background. The character is centered, "
-            "occupying the central 50% of the canvas with generous transparent "
-            "padding.\n\n"
-            "Preserve the character's identity exactly: same silhouette, same color "
-            "palette, same outline weight, same design language as the reference "
-            "image. Only the expression and pose change. Minor silhouette shifts are "
-            "allowed for animation energy.\n\nQuality: high."
+            "occupying the central 50-65% of the canvas with generous transparent "
+            "padding. Show the WHOLE body — do not crop any limb or the tail.\n\n"
+            "IDENTITY IS FIXED, POSTURE IS NOT. Preserve the character's identity "
+            "exactly: same proportions, same color palette, same outline weight, same "
+            "facial features and markings, same design language as the reference image. "
+            "But the body posture, limb positions, head angle, and camera viewing angle "
+            "MUST change to express the pose described above. The reference image shows "
+            "only the character's resting pose — treat it as a source of identity, NOT "
+            "as a posture to copy. Do not simply reuse the reference's stance with small "
+            "tweaks; re-pose the whole body so the pose reads clearly in silhouette."
+            "\n\nQuality: high."
         )
     return prompts

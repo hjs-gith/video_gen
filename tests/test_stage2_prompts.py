@@ -54,3 +54,71 @@ def test_variation_motion_is_scene_specific():
     plain = stage2_images._variation_motion({"atlas_in_scene": False})
     assert "Atlas" in atlas and "tilt" in atlas.lower()
     assert "Atlas" not in plain and "tilt" in plain.lower()
+
+
+# ── Multi-character scenes: reference binding ────────────────────────────────────
+# Regression: with an unlabeled reference list, Atlas's pointing ARM bled onto Byte and
+# rendered as a 5th leg. The prompt must bind each reference image to exactly one
+# character, and that numbering must match the images actually sent.
+
+def _two_character_scene():
+    return {
+        "scene_id": "S01",
+        "beat": "HOOK",
+        "on_screen_text": {"en": "Answer vs. action"},
+        "visual_intent": "Atlas points at a panel while Byte waits beside a goal flag",
+        "characters": [
+            {"name": "atlas", "pose": "pointing"},
+            {"name": "byte", "pose": "thinking"},
+        ],
+    }
+
+
+def _prompt_for(scene):
+    script = {"meta": {"term": "Agent", "tier": "T2"}, "scenes": [scene]}
+    return stage2_images.build_image_prompts(script)["scenes"][0]["image_prompt"]
+
+
+def test_reference_map_numbering_matches_images_actually_sent():
+    from atlas_pipeline.characters import reference_plan, scene_characters
+
+    scene = _two_character_scene()
+    prompt = _prompt_for(scene)
+
+    sent = [p for _, _, refs in reference_plan(scene_characters(scene)) for p in refs]
+    assert len(sent) == 2
+
+    # Each image the API receives is claimed, in order, by exactly one character.
+    assert "Reference image 1 = ATLAS" in prompt
+    assert "Reference image 2 = BYTE" in prompt
+    assert "atlas" in sent[0].name and "byte" in sent[1].name
+    # ...and there is no image 3 claimed that we never send.
+    assert "Reference image 3" not in prompt
+    assert "NEVER copy a pose, limb, body part, or feature" in prompt
+
+
+def test_anatomy_block_forbids_a_fifth_limb():
+    prompt = _prompt_for(_two_character_scene())
+    assert "CHARACTER ANATOMY" in prompt
+    assert "EXACTLY four legs" in prompt
+    assert "never a fifth limb" in prompt
+    assert "NO legs, NO feet" in prompt  # Atlas
+
+
+def test_byte_points_with_nose_not_an_arm():
+    from atlas_pipeline.characters import get_character
+
+    byte = get_character("byte")
+    brief = byte.pose_brief("pointing")
+    assert "NOSE" in brief
+    assert "NEVER points by raising a limb like an arm" in brief
+
+    # Atlas, by contrast, points with an arm — the two must not be interchangeable.
+    atlas = get_character("atlas")
+    assert "ARM" in atlas.pose_brief("pointing")
+
+
+def test_pose_brief_falls_back_to_bare_pose_word():
+    from atlas_pipeline.characters import get_character
+
+    assert get_character("byte").pose_brief("nonexistent") == "a nonexistent pose"

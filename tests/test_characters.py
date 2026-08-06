@@ -27,9 +27,15 @@ def byte_character(tmp_path):
         poses=["neutral", "happy"],
         tagline="a friendly pixel cursor sprite",
     )
+    prev = C._REGISTRY.get("byte")  # the real Byte, if the registry is bootstrapped
     C.register(byte)
     yield byte
-    C._REGISTRY.pop("byte", None)
+    # Restore rather than pop: popping would delete the real Byte for the rest of the
+    # session, since _bootstrap() only ever runs once.
+    if prev is not None:
+        C.register(prev)
+    else:
+        C._REGISTRY.pop("byte", None)
 
 
 def test_registry_resolves_atlas_and_added_character(byte_character):
@@ -142,3 +148,44 @@ def test_validate_script_multichar(byte_character):
 
     bad_pose = validate_script(_valid_script([{"name": "byte", "pose": "zzz"}]))
     assert any("pose" in e for e in bad_pose)
+
+
+# ── reference_plan: the single source of truth for stage-2 references ────────────
+
+def test_reference_plan_single_character_sends_neutral_plus_pose():
+    from atlas_pipeline.characters import get_character, reference_plan
+
+    atlas = get_character("atlas")
+    plan = reference_plan([(atlas, "pointing")])
+    (char, pose, refs) = plan[0]
+    assert char.id == "atlas" and pose == "pointing"
+    assert [p.name for p in refs] == ["atlas_neutral.png", "atlas_pointing.png"]
+
+
+def test_reference_plan_multi_character_sends_one_canonical_ref_each():
+    from atlas_pipeline.characters import get_character, reference_plan
+
+    present = [(get_character("atlas"), "pointing"), (get_character("byte"), "thinking")]
+    plan = reference_plan(present)
+    assert [c.id for c, _, _ in plan] == ["atlas", "byte"]
+    assert [len(refs) for _, _, refs in plan] == [1, 1]
+
+
+def test_reference_plan_omits_a_character_whose_bible_is_missing(tmp_path):
+    """A character with no bible files contributes no refs — it must not shift the
+    numbering of the characters that do have them."""
+    from atlas_pipeline.characters import Character, get_character, reference_plan
+
+    ghost = Character(
+        id="ghost",
+        display_name="Ghost",
+        seed_path=tmp_path / "ghost_neutral.png",
+        bible_dir=tmp_path / "ghost",       # nothing on disk
+        shared_block="",
+        blurb="",
+        expression_prompts={},
+        poses=["neutral"],
+    )
+    plan = reference_plan([(get_character("atlas"), "pointing"), (ghost, "neutral")])
+    refs = [p for _, _, rs in plan for p in rs]
+    assert len(refs) == 1 and "atlas" in refs[0].name
