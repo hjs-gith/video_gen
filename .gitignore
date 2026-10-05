@@ -21,3 +21,7 @@ episodes/
 
 # macOS folder metadata
 .DS_Store
+
+# local-only: API cost log and planning docs/seed images
+logs/
+plan_files/
