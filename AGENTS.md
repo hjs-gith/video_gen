@@ -5,7 +5,7 @@ videos explaining AI jargon, each starring a pixel-art mascot named Atlas. Episo
 are defined by a small YAML in `episodes_yaml/` and built in three stages via the
 `atlas` CLI: **stage 1** generates a bilingual `script.json`, **stage 2** generates
 pixel-art images, **stage 3** generates voiceover and assembles the video. Source
-lives in `src/atlas_pipeline/`; see `readme.txt` for the full workflow.
+lives in `src/atlas_pipeline/`; see `README.md` for the full workflow.
 
 ## Writing or editing an episode script
 
