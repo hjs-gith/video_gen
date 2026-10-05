@@ -16,7 +16,7 @@ PLAN_FILES_DIR = ROOT / "plan_files"
 SCRIPT_MODEL = os.getenv("SCRIPT_MODEL", "gpt-5.4")
 IMAGE_MODEL = "gpt-image-2"
 IMAGE_SIZE = "1536x864"
-IMAGE_QUALITY = "high"
+IMAGE_QUALITY = "low"
 
 # Stage 2 image provider: "openai" (gpt-image-2) or "local" (your own HTTP server,
 # e.g. a FLUX.2 [klein] backend — see docs/local_image_server.md).

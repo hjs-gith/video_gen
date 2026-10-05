@@ -49,7 +49,7 @@ def synthesize_to_file(
     tts = _get_tts()
     voice_name = SUPERTONIC_VOICE_EN if lang == "en" else SUPERTONIC_VOICE_KO
     style = tts.get_voice_style(voice_name=voice_name)
-    kwargs = dict(text=text, voice_style=style, total_steps=8, lang=lang)
+    kwargs = dict(text=text, voice_style=style, total_steps=12, lang=lang)
     if speed is not None:
         kwargs["speed"] = speed
     wav, _ = tts.synthesize(**kwargs)
