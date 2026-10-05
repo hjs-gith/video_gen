@@ -11,7 +11,7 @@ EPISODES_YAML_DIR = ROOT / "episodes_yaml"
 EPISODES_OUTPUT_DIR = ROOT / "episodes"
 ATLAS_BIBLE_DIR = ROOT / "atlas" / "bible"
 LOGS_DIR = ROOT / "logs"
-PLAN_FILES_DIR = ROOT / "plan_files"
+SEEDS_DIR = ROOT / "seeds"
 
 SCRIPT_MODEL = os.getenv("SCRIPT_MODEL", "gpt-5.4")
 IMAGE_MODEL = "gpt-image-2"

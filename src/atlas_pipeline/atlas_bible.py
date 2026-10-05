@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 from rich.console import Console
 
-from .config import ATLAS_BIBLE_DIR, ATLAS_CHARACTER_BLURB, PLAN_FILES_DIR, IMAGE_MODEL, image_client
+from .config import ATLAS_BIBLE_DIR, ATLAS_CHARACTER_BLURB, SEEDS_DIR, IMAGE_MODEL, image_client
 from .characters import Character, get_bible_paths, register
 
 console = Console()
@@ -356,7 +356,7 @@ ATLAS_ANATOMY = (
 ATLAS = Character(
     id="atlas",
     display_name="Atlas",
-    seed_path=PLAN_FILES_DIR / "atlas_neutral.png",
+    seed_path=SEEDS_DIR / "atlas_neutral.png",
     bible_dir=ATLAS_BIBLE_DIR,
     shared_block=_SHARED_CHARACTER_BLOCK,
     blurb=ATLAS_CHARACTER_BLURB,

@@ -259,7 +259,7 @@ Stage 3 음성은 기본적으로 **Supertonic**(로컬, 무료)을 씁니다. �
 **2. Character Bibles (one-time) / 캐릭터 Bible 생성 (1회)**
 
 ```bash
-uv run atlas character generate atlas   # from plan_files/atlas_neutral.png
+uv run atlas character generate atlas   # from seeds/atlas_neutral.png
 # review atlas/bible/quality_check.png, then:
 uv run atlas character lock atlas
 uv run atlas character list             # shows every character + status
@@ -346,7 +346,7 @@ target_length_sec: 60
 next_episode_teaser: "Knowledge Cutoff"
 ```
 
-See `plan_files/ai_jargon_curriculum.md` for all 50 planned terms, and `uv run atlas curriculum` / `uv run atlas episode list`.
+The 50-term plan is kept in the local, git-ignored `plan_files/` folder; list what exists with `uv run atlas curriculum` / `uv run atlas episode list`.
 
 </td>
 <td width="50%" valign="top">
@@ -369,7 +369,7 @@ target_length_sec: 60
 next_episode_teaser: "Knowledge Cutoff"
 ```
 
-50개 전체 용어는 `plan_files/ai_jargon_curriculum.md`, 목록은 `uv run atlas curriculum` / `uv run atlas episode list`에서 볼 수 있습니다.
+50개 용어 계획은 git에 올리지 않는 로컬 `plan_files/` 폴더에 두며, 현재 에피소드 목록은 `uv run atlas curriculum` / `uv run atlas episode list`로 확인합니다.
 
 </td>
 </tr>
@@ -381,7 +381,7 @@ next_episode_teaser: "Knowledge Cutoff"
 
 ## Adding a new character
 
-1. Save a clean ~1024×1024 transparent pixel-art **neutral** seed as `plan_files/<id>_neutral.png`.
+1. Save a clean ~1024×1024 transparent pixel-art **neutral** seed as `seeds/<id>_neutral.png`.
 2. Register it in `src/atlas_pipeline/characters.py` (id, display name, `shared_block` description, short `blurb` and `tagline`, and 5 pose deltas via `make_expression_prompts()`). See `character_byte.py` for a worked example.
 3. `uv run atlas character generate <id>` → review `characters/<id>/quality_check.png` → `uv run atlas character lock <id>`.
 4. Stage 1 and the `/episode-script` skill automatically see every registered character; place them in a scene with `"characters": [{"name":"atlas","pose":"pointing"},{"name":"byte","pose":"happy"}]`.
@@ -393,7 +393,7 @@ Two characters in one image is the hardest case — keep each one's role in `vis
 
 ## 새 캐릭터 추가
 
-1. 투명 배경의 깔끔한 ~1024×1024 **neutral** 시드 픽셀아트를 `plan_files/<id>_neutral.png`로 저장합니다.
+1. 투명 배경의 깔끔한 ~1024×1024 **neutral** 시드 픽셀아트를 `seeds/<id>_neutral.png`로 저장합니다.
 2. `src/atlas_pipeline/characters.py`에 등록합니다(id, 표시 이름, `shared_block` 설명, 짧은 `blurb`·`tagline`, `make_expression_prompts()`용 포즈 5개). 예시는 `character_byte.py`를 참고하세요.
 3. `uv run atlas character generate <id>` → `characters/<id>/quality_check.png` 확인 → `uv run atlas character lock <id>`.
 4. Stage 1과 `/episode-script` 스킬은 등록된 모든 캐릭터를 자동 인식합니다. `"characters": [{"name":"atlas","pose":"pointing"},{"name":"byte","pose":"happy"}]`처럼 장면에 배치하세요.
@@ -506,10 +506,11 @@ characters/<id>/      other characters' Bibles (e.g. byte) / 다른 캐릭터 Bi
 src/atlas_pipeline/   cli.py, stage1_script.py, stage2_images.py, stage3_video.py,
                       characters.py, atlas_bible.py, character_byte.py, image_local.py, tts_local.py …
 tests/                pytest suite / 테스트
-plan_files/           planning docs, seed images, 50-term curriculum / 기획 문서·시드 이미지·커리큘럼
+seeds/                neutral seed images for character Bibles / 캐릭터 Bible용 neutral 시드 이미지
+plan_files/           local-only planning docs (git-ignored) / 로컬 전용 기획 문서 (git 제외)
 docs/                 local image-server specs + README images / 로컬 이미지 서버 규격 + README 이미지
 .claude/skills/       /episode-script skill / 대본 작성 스킬 (mirrored in .agents/skills/)
-logs/api_calls.jsonl  append-only cost log / 비용 로그
+logs/api_calls.jsonl  local append-only cost log (git-ignored) / 로컬 비용 로그 (git 제외)
 models/supertonic/    local TTS model (git-ignored) / 로컬 TTS 모델
 ```
 

@@ -6,7 +6,7 @@ defined once and then generated as pose "bibles", written into scripts, and
 rendered on-model — including two characters together in one scene.
 
 A character is defined by:
-  - a neutral SEED image (e.g. plan_files/<id>_neutral.png), hand-made/curated,
+  - a neutral SEED image (e.g. seeds/<id>_neutral.png), hand-made/curated,
   - a canonical text description (`shared_block`) + a compact `blurb`,
   - a set of expression/pose edit-prompts (built from the seed via images.edit).
 
@@ -170,9 +170,9 @@ def reference_plan(
 
 def default_seed_path(cid: str) -> Path:
     """Conventional seed location for a new character."""
-    from .config import PLAN_FILES_DIR
+    from .config import SEEDS_DIR
 
-    return PLAN_FILES_DIR / f"{cid}_neutral.png"
+    return SEEDS_DIR / f"{cid}_neutral.png"
 
 
 def default_bible_dir(cid: str) -> Path:
