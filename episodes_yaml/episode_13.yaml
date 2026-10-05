@@ -1,0 +1,11 @@
+episode_number: 14
+cluster: 3
+cluster_name: "What AI Remembers & Knows"
+terms:
+  - "Memory"
+tier: "T1"
+one_line_gist: "Memory is saved information AI may carry across chats, which is different from the current conversation's context window."
+metaphor_seed: "AI works at a desk: the context window is today's desk, while memory is a small set of sticky notes kept on the wall for later chats."
+example_scenario: "A user expects AI to remember a preference from a past chat; the episode shows the difference between details visible in the current chat and saved notes that may persist later."
+target_length_sec: 90
+next_episode_teaser: "RAG"

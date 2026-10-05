@@ -1,0 +1,11 @@
+episode_number: 12
+cluster: 3
+cluster_name: "What AI Remembers & Knows"
+terms:
+  - "Token"
+tier: "T1"
+one_line_gist: "Tokens are the tiny pieces AI reads and writes, and every useful or useless piece takes up space on AI's working desk."
+metaphor_seed: "AI works at a desk: tokens are paper slips that fill the desk space introduced in the Context Window episode, and useful and useless slips both take room."
+example_scenario: "A user pastes a messy email thread into AI and gets an answer that misses the important part; then they remove signatures, repeated replies, duplicates, and irrelevant sections, point to the focus, and ask for a shorter output."
+target_length_sec: 90
+next_episode_teaser: "Knowledge Cutoff"

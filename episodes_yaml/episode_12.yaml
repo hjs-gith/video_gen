@@ -1,0 +1,11 @@
+episode_number: 13
+cluster: 3
+cluster_name: "What AI Remembers & Knows"
+terms:
+  - "Knowledge Cutoff"
+tier: "T1"
+one_line_gist: "Knowledge cutoff is the point where AI's built-in reference book stops, so recent facts may need checking."
+metaphor_seed: "AI works at a desk with an old reference book: the book is useful, but its last page has a date, and anything after that date must be checked elsewhere."
+example_scenario: "A user asks about a recent company policy, product launch, or news event; AI may answer from older built-in knowledge unless the user provides the current document or asks it to check a fresh source."
+target_length_sec: 90
+next_episode_teaser: "Memory"

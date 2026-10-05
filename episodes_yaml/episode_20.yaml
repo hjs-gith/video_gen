@@ -1,0 +1,11 @@
+episode_number: 21
+cluster: 4
+cluster_name: "How AI Takes Action"
+terms:
+  - "Human-in-the-loop"
+tier: "T2"
+one_line_gist: "Human-in-the-loop means a person stays involved at important moments, especially before risky or irreversible actions."
+metaphor_seed: "AI as a working dog: even a trained dog should pause at the curb and look to the handler before crossing. Human-in-the-loop is the approval signal before sensitive steps."
+example_scenario: "AI drafts an email, proposes a purchase, edits a file, or summarizes a high-stakes document; a human reviews and approves before the action goes out."
+target_length_sec: 90
+next_episode_teaser: "Agent Harness"

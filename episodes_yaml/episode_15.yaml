@@ -1,0 +1,11 @@
+episode_number: 16
+cluster: 4
+cluster_name: "How AI Takes Action"
+terms:
+  - "Agent"
+tier: "T2"
+one_line_gist: "An agent is AI that can work toward a goal across multiple steps, instead of only answering one prompt."
+metaphor_seed: "AI as a working sheepdog: a standard chatbot is like a parlor-trick puppy that sits when you say sit, but an agent is a trained dog given a broad goal, such as bring the flock into the barn. It decides whether to move left, right, fast, or slow while still working toward the handler's mission."
+example_scenario: "A user asks AI to plan a small trip, compare options, make a checklist, and keep going until the plan is usable; the episode contrasts a one-shot answer with an agent that tracks the goal, chooses next steps, and keeps working toward completion."
+target_length_sec: 90
+next_episode_teaser: "Tool Calling"

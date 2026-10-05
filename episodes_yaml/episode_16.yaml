@@ -1,0 +1,12 @@
+episode_number: 17
+cluster: 4
+cluster_name: "How AI Takes Action"
+terms:
+  - "Tool"
+  - "Tool Call"
+tier: "T2"
+one_line_gist: "Tool calling is how AI chooses and triggers an outside capability, such as search, calculation, file access, or a calendar check."
+metaphor_seed: "AI as a smart dog in a smart kennel: the dog cannot open the food bin, turn on the hose, or unlock the gate with human hands. Instead, the kennel has dog-friendly buttons, floor pads, and pull-ropes. A tool call is the moment the dog recognizes the need, walks to the right control, and presses the big blue button with its nose."
+example_scenario: "A user asks for a current answer, a calculation, or information from a file; AI should not pretend it knows everything from memory, but should pick the right external system and trigger a specific action."
+target_length_sec: 90
+next_episode_teaser: "MCP"

@@ -1,0 +1,11 @@
+episode_number: 0
+cluster: 0
+cluster_name: "Series Intro"
+terms:
+  - "Intro"
+tier: "T1"
+one_line_gist: "This intro explains that AI terms can feel overwhelming, but viewers only need practical intuition to use AI more wisely."
+metaphor_seed: "AI jargon is like a map: you do not need to memorize every street, but useful landmarks help you know where you are, what to try next, and when to be careful."
+example_scenario: "A viewer hears terms like prompt, token, context window, RAG, and fine-tuning; instead of learning every technical detail, they learn what each term means well enough to improve how they use AI."
+target_length_sec: 60
+next_episode_teaser: "Context Window"

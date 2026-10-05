@@ -1,0 +1,11 @@
+episode_number: 22
+cluster: 4
+cluster_name: "How AI Takes Action"
+terms:
+  - "Agent Harness"
+tier: "T2.7"
+one_line_gist: "An agent harness is the surrounding system that guides, limits, observes, and safely contains an agent while it works."
+metaphor_seed: "AI as a working dog: even the smartest dog needs a harness, leash, and fenced yard. The harness lets the handler pull back before a cliff, while the fence keeps a frantic digging session from damaging the neighbor's garden."
+example_scenario: "An agent can use tools and follow workflows, but the surrounding app controls permissions, logs actions, isolates risky work in a sandbox, evaluates outputs, and lets people stop or redirect it."
+target_length_sec: 90
+next_episode_teaser: ""

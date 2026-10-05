@@ -1,0 +1,11 @@
+episode_number: 15
+cluster: 3
+cluster_name: "What AI Remembers & Knows"
+terms:
+  - "RAG"
+tier: "T2.5"
+one_line_gist: "RAG is when AI looks up outside documents first, then uses those retrieved references to answer."
+metaphor_seed: "AI works at a desk: when the desk and old reference book are not enough, Atlas brings fresh documents from a filing cabinet or library cart before answering."
+example_scenario: "A user asks about a specific policy, internal handbook, support article, or fresh product detail; AI retrieves the relevant document first, then answers from that source instead of relying only on memory."
+target_length_sec: 90
+next_episode_teaser: ""

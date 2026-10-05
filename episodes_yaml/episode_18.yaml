@@ -1,0 +1,11 @@
+episode_number: 19
+cluster: 4
+cluster_name: "How AI Takes Action"
+terms:
+  - "Agent Skill"
+tier: "T2"
+one_line_gist: "An agent skill is reusable task know-how that helps an agent perform a specific kind of work more reliably."
+metaphor_seed: "AI as a working dog: a skill is a trained routine, like fetch, search, guide, wait, or inspect. The dog is not inventing the behavior from scratch every time; it has practiced the pattern and knows what steps usually come next."
+example_scenario: "A user asks AI to create a report, review a file, or prepare a bilingual episode script; an agent skill gives the agent the right steps, standards, and habits for that task."
+target_length_sec: 90
+next_episode_teaser: "Workflow"

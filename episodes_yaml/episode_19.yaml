@@ -1,0 +1,11 @@
+episode_number: 20
+cluster: 4
+cluster_name: "How AI Takes Action"
+terms:
+  - "Workflow"
+tier: "T2"
+one_line_gist: "A workflow is an ordered path of steps that turns messy work into a repeatable process."
+metaphor_seed: "AI as a working dog: a workflow is the route through the course, with gates in order. Instead of running around enthusiastically, the dog moves from search, to fetch, to check-in, to delivery."
+example_scenario: "A user wants AI to research, compare, draft, review, and produce a final answer; the workflow keeps those steps in order and makes the process easier to inspect."
+target_length_sec: 90
+next_episode_teaser: "Human-in-the-loop"

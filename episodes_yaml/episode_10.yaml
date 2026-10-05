@@ -2,10 +2,10 @@ episode_number: 11
 cluster: 3
 cluster_name: "What AI Remembers & Knows"
 terms:
-  - "Token"
+  - "Context Window"
 tier: "T1"
-one_line_gist: "The small chunks of language AI reads and writes — and what you're billed for."
-metaphor_seed: "AI taxi meter — every word in and every word out runs the meter"
-example_scenario: "Reading a headline like '1 million token context' and not knowing what a token actually is; seeing a 120-token prompt produce a 350-token reply and realizing you pay for both"
-target_length_sec: 58
-next_episode_teaser: "Context Window"
+one_line_gist: "The context window is AI's limited working desk space, so important information needs to stay visible while the task is happening."
+metaphor_seed: "AI works at a desk: the context window is the desk space, old memos get harder to find when the desk is crowded, and a new task works better after clearing the desk."
+example_scenario: "A user continues a long messy chat and AI loses track; then they start fresh or bring the current goal, key facts, and desired output back to the top."
+target_length_sec: 90
+next_episode_teaser: "Token"

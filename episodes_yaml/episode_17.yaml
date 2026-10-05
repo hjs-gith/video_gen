@@ -1,0 +1,11 @@
+episode_number: 18
+cluster: 4
+cluster_name: "How AI Takes Action"
+terms:
+  - "MCP"
+tier: "T2.5"
+one_line_gist: "MCP is a standard way for AI apps to connect to tools and data sources without every connection being custom-built."
+metaphor_seed: "AI as a smart dog in a facility: without MCP, every room has a different trigger, such as a twist latch, a lever, or a code pad. MCP makes every interactive object use the same dog-friendly paw-pad shape, so once the dog learns one control, it can operate many approved tools."
+example_scenario: "A user wants AI to connect to files, tickets, docs, databases, or internal apps; MCP gives those tools a consistent interface instead of requiring a custom integration for every system."
+target_length_sec: 90
+next_episode_teaser: "Agent Skill"
